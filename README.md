@@ -1,6 +1,7 @@
 # EHU32
 
 This Arduino sketch enables ESP32 to communicate over MS-CAN bus in Opel vehicles such as Astra H, Zafira B, Vectra C (and many more!) in addition to acting as a bluetooth audio receiver.
+
 ![IMG_20240222_223427r](https://github.com/PNKP237/EHU32/assets/153071841/0387c5a4-0133-4d70-9a6b-a7824ea84370)
 
 ![IMG_20240219_215018r](https://github.com/PNKP237/EHU32/assets/153071841/0d320950-1f8f-4e58-8fe0-17751e60074a)
@@ -33,3 +34,5 @@ Depends on Arduino ESP32-A2DP library by pschatzmann: https://github.com/pschatz
 Reverse engineering of the vehicles various messages was done by JJToB: https://github.com/JJToB/Car-CAN-Message-DB
 
 This project comes with absolutely no warranty of any kind, I'm not responsible for your car going up in flames.
+
+![IMG_20240217_172706](https://github.com/PNKP237/EHU32/assets/153071841/46e31e0d-70b7-423b-9a04-b4522eb96506)
