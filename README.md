@@ -11,7 +11,7 @@ Features:
 - reads steering wheel button presses, which allows for control of connected audio source (play/pause, previous/next track)
 - receives bluetooth metadata from connected audio source and prints it to vehicle's center console display - tested on CID, GID and BID, 1-line and 3-lines are supported - only "Aux" messages are overwritten
 - simulates button presses in Climate Control menu to allow for one-press enabling/disabling of AC compressor
-- long pressing "2" button on the radio switches prints diagnostic data provided by Electronic Climate Control (ECC) module - Engine coolant temp, Speed + RPMs, battery voltage. Long pressing "1" goes back to audio metadata mode
+- long pressing "2" button on the radio panel prints diagnostic data provided by Electronic Climate Control (ECC) module - Engine coolant temp, Speed + RPMs, battery voltage. Long pressing "1" goes back to audio metadata mode
 - Over-the-air updates, holding "8" enables the wifi hotspot (password ehu32updater). Note that this disables CAN and bluetooth A2DP until restart.
 - more to come, hopefully
 
