@@ -172,17 +172,17 @@ void canUpdateBodyData(){
   }
 }
 
-// fallback to read coolant temperatures from ECU in case reading from ECC fails
+// fallback to read coolant temperatures from ECU in case reading from ECC fails; to be implemented sometime in the future
 void canUpdateCoolant(){
   CAN_data_coolant=(RxMessage.data[3]-40);
   CAN_coolant_recvd=1;
 }
 
-// decides what function to call when a button on the factory radio has been pressed for 2 seconds
+// decides what function to call when a button on the factory radio has been held down for about one second
 void canDecodeEhuButtons(){
-  if(RxMessage.data[0]==0x01 && RxMessage.data[2]==20){
+  if(RxMessage.data[0]==0x01 && RxMessage.data[2]>=10){
     switch(RxMessage.data[1]){
-      case 0x30:  canActionEhuButton0();
+      case 0x30:  canActionEhuButton0();      // CD30 has no '0' button!
                   break;
       case 0x31:  canActionEhuButton1();
                   break;

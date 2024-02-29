@@ -77,7 +77,7 @@ void A2DP_EventHandler(){
     a2dp_init();
   }
   
-  if(audio_state_changed){                                   // mute external DAC when not playing
+  if(audio_state_changed && bt_connected){      // mute external DAC when not playing; bt_connected ensures no "Connected, paused" is displayed, seems that the audio_state_changed callback comes late
     if(bt_audio_playing){
       digitalWrite(PCM_MUTE_CTL, HIGH);
       DIS_autoupdate=1;
@@ -110,5 +110,6 @@ void a2dp_shutdown(){
   if(a2dp_started && RxMessage.data[3]==0x18){
     a2dp_sink.disconnect();
     ehu_started=0;                            // so it is possible to restart and reconnect the source afterwards in the rare case radio is shutdown but ESP32 is still powered up
+    a2dp_started=0;                           // while extremely unlikely to happen in the vehicle, this comes handy for debugging on my desk setup
   }
 }

@@ -1,7 +1,6 @@
 bool OTA_running=0;
 
-const char* host = "Asterka";
-const char* ssid = "AsterkaEHU32";
+const char* ssid = "EHU32-OTA";
 const char* password = "ehu32updater";
 volatile bool OTA_Finished=0;
 

@@ -16,17 +16,17 @@
 
 bool DEBUGGING_ON=0;
 // pin definitions
-const int DIS_SEL0_PIN=16, DIS_SEL1_PIN=17, PCM_MUTE_CTL=23;
+const int PCM_MUTE_CTL=23;            // this pin controls PCM5102s soft-mute function
 // CAN buffers
 uint32_t alerts_triggered;
 static twai_message_t RxMessage, TxMessage;
 twai_status_info_t status_info;
-// CAN related switches
+// CAN related flags
 bool DIS_forceUpdate=0, DIS_autoupdate=0, CAN_MessageReady=0, CAN_prevTxFail=0, CAN_speed_recvd=0, CAN_coolant_recvd=0, CAN_voltage_recvd=0, CAN_new_dataSet_recvd=0;
 // body data
 int CAN_data_speed=0, CAN_data_rpm=0;
 float CAN_data_coolant=0, CAN_data_voltage=0;
-// global bluetooth switches
+// global bluetooth flags
 bool ehu_started=0, a2dp_started=0, bt_connected=0, bt_state_changed=0, bt_audio_playing=0, audio_state_changed=0;
 // data buffers
 static char utf16buffer[384], utf16_title[128], utf16_artist[128], utf16_album[128], CAN_MsgArray[64][8], title_buffer[64], artist_buffer[64], album_buffer[64], coolant_buffer[32], speed_buffer[32], voltage_buffer[32];
@@ -39,8 +39,6 @@ unsigned int last_millis=0;
 void sendMultiPacketData();
 
 void setup() {
-  pinMode(DIS_SEL0_PIN, INPUT_PULLUP);          // LSB
-  pinMode(DIS_SEL1_PIN, INPUT_PULLUP);          // MSB
   pinMode(PCM_MUTE_CTL, OUTPUT);
   digitalWrite(PCM_MUTE_CTL, HIGH);
   delay(100);
@@ -52,7 +50,7 @@ void setup() {
 void processDataBuffer(bool disp_mode_override=0, char* up_line_text=nullptr, char* mid_line_text=nullptr, char* low_line_text=nullptr){             // disp_mode_override exists as a simple way to print one-off messages (like board status, errors and such)
   if(!CAN_MessageReady){                      // only prepare new buffers once the previously prepared message has been sent. DIS_forceUpdate is still 1, so this function should be called again next loop
     if(!disp_mode_override){
-      if(disp_mode==0){
+      if(disp_mode==0 && (album_buffer[0]!='\0' || title_buffer[0]!='\0' || artist_buffer[0]!='\0')){
         prepareMultiPacket(utf8_conversion(album_buffer, title_buffer, artist_buffer));               // prepare a 3-line message (audio Title, Album and Artist)
       }
       if(disp_mode==1){
@@ -88,11 +86,11 @@ void loop() {
     CAN_prevTxFail=0;
   }
   if(CAN_MessageReady){       // CAN_MessageReady is set after the display has been requested is sent. This waits for the display to reply with an ACK (id 0x2C1)
-    delay(10);
+    delay(5);                // waits a bit because sometimes stuff happens so fast we get the ACK meant for the radio, we need to wait for the radio to stop talking
     RxMessage.identifier=0x0;                         // workaround for debugging when the bus is not on
     while(!RxMessage.identifier==0x2C1){
       if(DEBUGGING_ON) Serial.println("CAN: Waiting for 0x2C1 ACK...");
-      while(twai_receive(&RxMessage, pdMS_TO_TICKS(10))!=ESP_OK){        // wait for the desired message
+      while(twai_receive(&RxMessage, pdMS_TO_TICKS(5))!=ESP_OK){        // wait for the desired message
         delay(1);                                                         // I've honestly tried everything, refreshing status and alerts. This shit just doesn't work properly
       }
     }
@@ -102,7 +100,6 @@ void loop() {
     canReceive();             // read data from RX buffer
   }
 
-  
   if(disp_mode_changed_with_delay){             // ensure the "one-off" status message is displayed for some time, then go back to regular messages based on disp_mode
     DIS_autoupdate=0;
     if((last_millis+3000)<millis()){
@@ -117,12 +114,12 @@ void loop() {
     disp_mode_changed=0;
   }
   
-  if(disp_mode==1){
+  if(disp_mode==1){                           // if running in measurement block mode, check time and if enough time has elapsed ask for new data
     if((last_millis+250)<millis()){
       requestMeasurementBlocks();
       last_millis=millis();
     }
-    if(CAN_new_dataSet_recvd){
+    if(CAN_new_dataSet_recvd){               // print new data if it has arrived
       CAN_new_dataSet_recvd=0;
       processDataBuffer();
     }
@@ -132,5 +129,5 @@ void loop() {
     processDataBuffer();
   }
   
-  A2DP_EventHandler();
+  A2DP_EventHandler();          // process bluetooth and audio flags set by interrupt callbacks
 }
