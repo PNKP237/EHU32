@@ -1,7 +1,7 @@
 // initialize CAN BUS
 void twai_init(){
   twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(GPIO_NUM_5, GPIO_NUM_4, TWAI_MODE_NORMAL);         // CAN bus set up
-  g_config.rx_queue_len=20;
+  g_config.rx_queue_len=40;
   g_config.tx_queue_len=5;
   g_config.intr_flags=(ESP_INTR_FLAG_LEVEL1 & ESP_INTR_FLAG_IRAM);
   twai_timing_config_t t_config =  {.brp = 42, .tseg_1 = 15, .tseg_2 = 4, .sjw = 3, .triple_sampling = false};    // set CAN prescalers and time quanta for 95kbit
@@ -82,36 +82,36 @@ void canDecodeAC(){
   if(DEBUGGING_ON) Serial.println("CAN: Decoding AC buttons");
   if((RxMessage.data[0]==0x0) && (RxMessage.data[1]==0x17) && (RxMessage.data[2]<0x03)){	// knob held for short time
     int ac_dlc=3, button_delay=100;
-    delay(button_delay);
+    vTaskDelay(pdMS_TO_TICKS(button_delay));
     //down once
     char ac_buffer[8]={0x08, 0x16, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00};                           // todo optimize this garbage
     sendPacket(0x208, ac_buffer, ac_dlc);
-    delay(button_delay);
+    vTaskDelay(pdMS_TO_TICKS(button_delay));
     //push button
     ac_buffer[0]=0x01;
     ac_buffer[1]=0x17;
     ac_buffer[2]=0x00;
     sendPacket(0x208, ac_buffer, ac_dlc);
-    delay(button_delay);
+    vTaskDelay(pdMS_TO_TICKS(button_delay));
     //release button with a time constant
     ac_buffer[0]=0x00;
     ac_buffer[2]=0x10;
     sendPacket(0x208, ac_buffer, ac_dlc);
-    delay(button_delay);
+    vTaskDelay(pdMS_TO_TICKS(button_delay));
     //turn down twice
     ac_buffer[0]=0x08;
     ac_buffer[1]=0x16;
     ac_buffer[2]=0x01;
     sendPacket(0x208, ac_buffer, ac_dlc);
-    delay(button_delay);
+    vTaskDelay(pdMS_TO_TICKS(button_delay));
     sendPacket(0x208, ac_buffer, ac_dlc);
-    delay(button_delay);
+    vTaskDelay(pdMS_TO_TICKS(button_delay));
     //push button
     ac_buffer[0]=0x01;
     ac_buffer[1]=0x17;
     ac_buffer[2]=0x00;
     sendPacket(0x208, ac_buffer, ac_dlc);
-    delay(button_delay);
+    vTaskDelay(pdMS_TO_TICKS(button_delay));
     //release button with a time constant
     ac_buffer[0]=0x00;
     ac_buffer[2]=0x10;
@@ -130,7 +130,7 @@ void canUpdateDisplay(){
   if(DIS_autoupdate && disp_mode!=-1){            // don't bother checking the data if there's no need to update the display
     if(RxMessage.data[0]==0x10 && RxMessage.data[1]<0x40){       // we check if the total payload of radio's message is small, if yes assume it's an Aux message
       //Serial.println("Got 6C1 # 10 XX...");
-      delay(50);
+      vTaskDelay(pdMS_TO_TICKS(50));
       sendMultiPacket();
     }
   }
@@ -240,7 +240,7 @@ void canActionEhuButton6(){
 
 void canActionEhuButton7(){
   a2dp_sink.disconnect();
-  delay(1000);
+  vTaskDelay(pdMS_TO_TICKS(1000));
   ESP.restart();
 }
 

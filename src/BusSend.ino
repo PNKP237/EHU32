@@ -18,10 +18,11 @@ void sendPacket(int id, char can_send_buffer[8], int dlc=8){
       if(DEBUGGING_ON) Serial.print("TX:OK ");
     } else {
       if(DEBUGGING_ON) Serial.print("TX:FAIL ");
-        CAN_prevTxFail=1;
+        CAN_prevTxFail=1;                           // the main loop will try to transmit the message again on the next iteration
     }
   } else {
       if(DEBUGGING_ON) Serial.print("AR:FAIL:");
+      CAN_prevTxFail=1;
     if(alert_result==ESP_ERR_INVALID_ARG){
       if(DEBUGGING_ON) Serial.print("INV_ARG");
     }
@@ -70,7 +71,7 @@ void sendMultiPacketData(){   // should only be executed after the display ackno
   for(int i=1;i<64 && (CAN_MsgArray[i][0]!=0x00 && !CAN_prevTxFail);i++){                 // this loop will stop sending data once the next packet doesn't contain a label
     if(DEBUGGING_ON) sendPacketSerial(0x6C1, CAN_MsgArray[i]);
     sendPacket(0x6C1, CAN_MsgArray[i]);
-    delay(2);
+    vTaskDelay(pdMS_TO_TICKS(2));
   }
   if(DEBUGGING_ON) Serial.println();
   CAN_MessageReady=0;                   // new buffers can now be prepared as the message has been sent

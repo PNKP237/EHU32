@@ -63,8 +63,9 @@ void a2dp_init(){
   } else {
     a2dp_sink.set_auto_reconnect(true);
   }
-  
-  a2dp_sink.start("EHU32");                                                       // setting up bluetooth audio sink
+
+  a2dp_sink.start("EHU32");
+                                                     // setting up bluetooth audio sink
   a2dp_started=1;
   if(DEBUGGING_ON) Serial.println("A2DP: Started!");
 
@@ -111,5 +112,6 @@ void a2dp_shutdown(){
     a2dp_sink.disconnect();
     ehu_started=0;                            // so it is possible to restart and reconnect the source afterwards in the rare case radio is shutdown but ESP32 is still powered up
     a2dp_started=0;                           // while extremely unlikely to happen in the vehicle, this comes handy for debugging on my desk setup
+    if(DEBUGGING_ON) Serial.println("CAN: EHU went down! Disconnecting A2DP.");
   }
 }

@@ -8,30 +8,65 @@ void clear_buffer(char* buf_to_clear){
   }
 }
 
-// converts EASCII data from arguments to fake UTF-16, then compiles a full display message with formatting; returns total bytes written as part of message payload
-int utf8_conversion(char* upper_line_buffer, char* middle_line_buffer, char* lower_line_buffer){            // go through title, artist, album     faking UTF-16 since 16-02-24
+// process an UTF-8 buffer, returns the amount of chars processed
+unsigned int utf8_to_utf16(const char* utf8_buffer, char* utf16_buffer){
+  unsigned int utf16_bytecount=0;
+  while (*utf8_buffer!='\0'){
+    uint32_t charint=0;
+    if ((*utf8_buffer&0x80)==0x00){
+      charint=*utf8_buffer&0x7F;
+      utf8_buffer++;
+    }
+    else if ((*utf8_buffer&0xE0)==0xC0){
+      charint=(*utf8_buffer & 0x1F)<<6;
+      charint|=(*(utf8_buffer+1)&0x3F);
+      utf8_buffer+=2;
+    }
+    else if ((*utf8_buffer&0xF0)==0xE0){
+      charint=(*utf8_buffer&0x0F)<<12;
+      charint|=(*(utf8_buffer+1)&0x3F)<<6;
+      charint|=(*(utf8_buffer+2)&0x3F);
+      utf8_buffer += 3;
+    }
+    else if ((*utf8_buffer&0xF8)==0xF0){
+      charint=(*utf8_buffer&0x07)<<18;
+      charint|=(*(utf8_buffer+1)&0x3F)<<12;
+      charint|=(*(utf8_buffer+2)&0x3F)<<6;
+      charint|=(*(utf8_buffer+3)&0x3F);
+      utf8_buffer+=4;
+    }
+    else {
+      return utf16_bytecount/2;
+    }
+    // only process supported chars, latin and extended latin works, cyrillic does not
+    if ((charint>=0x0000&&charint<=0x024F) || (charint>=0x1E00 && charint<=0x2C6F)){
+      if (charint>=0x10000) {
+        charint-=0x10000;
+        utf16_buffer[utf16_bytecount++]=static_cast<char>((charint>>10)+0xD8);
+        utf16_buffer[utf16_bytecount++]=static_cast<char>((charint>>2)&0xFF);
+        utf16_buffer[utf16_bytecount++]=static_cast<char>(0xDC|((charint>>10)&0x03));
+        utf16_buffer[utf16_bytecount++]=static_cast<char>((charint&0x03)<<6);
+      }
+      else {
+        utf16_buffer[utf16_bytecount++]=static_cast<char>((charint>>8)&0xFF);
+        utf16_buffer[utf16_bytecount++]=static_cast<char>(charint&0xFF);
+      }
+    }
+  }
+  return utf16_bytecount/2;  // amount of chars processed
+}
+
+// converts UTF-8 strings from arguments to real UTF-16, then compiles a full display message with formatting; returns total bytes written as part of message payload
+int utf8_conversion(char* upper_line_buffer, char* middle_line_buffer, char* lower_line_buffer){
   int upper_line_buffer_lenght=0, middle_line_buffer_lenght=0, lower_line_buffer_lenght=0;
   if(upper_line_buffer!=nullptr){                                           // calculating string lenghts to keep track of processed data
-    upper_line_buffer_lenght=snprintf(nullptr, 0, upper_line_buffer);
+    upper_line_buffer_lenght=utf8_to_utf16(upper_line_buffer, utf16_album);
   }
   if(middle_line_buffer!=nullptr){
-    middle_line_buffer_lenght=snprintf(nullptr, 0, middle_line_buffer);
+    middle_line_buffer_lenght=utf8_to_utf16(middle_line_buffer, utf16_title);
   }
   if(lower_line_buffer!=nullptr){
-    lower_line_buffer_lenght=snprintf(nullptr, 0, lower_line_buffer);
-  }
-
-  for(int i=0; i<middle_line_buffer_lenght && middle_line_buffer!=nullptr; i++){          // janky conversion to UTF-16
-    utf16_title[i*2]=0x0;
-    utf16_title[(i*2)+1]=middle_line_buffer[i];
-  }
-  for(int i=0; i<upper_line_buffer_lenght && upper_line_buffer!=nullptr; i++){
-    utf16_album[i*2]=0x0;
-    utf16_album[(i*2)+1]=upper_line_buffer[i];
-  }
-  for(int i=0; i<lower_line_buffer_lenght && lower_line_buffer!=nullptr; i++){
-    utf16_artist[i*2]=0x0;
-    utf16_artist[(i*2)+1]=lower_line_buffer[i];
+    lower_line_buffer_lenght=utf8_to_utf16(lower_line_buffer, utf16_artist);
   }
 
   if(DEBUGGING_ON){               // debug stuff
@@ -142,3 +177,4 @@ int utf8_conversion(char* upper_line_buffer, char* middle_line_buffer, char* low
   utf16buffer[3]=utf16buffer[0]-3;
   return last_byte_written+1;                   // return the total message size
 }
+

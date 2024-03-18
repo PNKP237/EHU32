@@ -10,7 +10,6 @@
 #include "driver/twai.h"
 #include <WiFi.h>
 #include <WiFiAP.h>
-#include <ESPmDNS.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 
@@ -30,7 +29,7 @@ float CAN_data_coolant=0, CAN_data_voltage=0;
 bool ehu_started=0, a2dp_started=0, bt_connected=0, bt_state_changed=0, bt_audio_playing=0, audio_state_changed=0;
 // data buffers
 static char utf16buffer[384], utf16_title[128], utf16_artist[128], utf16_album[128], CAN_MsgArray[64][8], title_buffer[64], artist_buffer[64], album_buffer[64], coolant_buffer[32], speed_buffer[32], voltage_buffer[32];
-// display mode 0 -> song metadata, 1 -> body data, -1 -> prevent screen updates
+// display mode 0 -> song metadata, 1 -> body data, 2 -> MP3 player -1 -> prevent screen updates
 int disp_mode=3;
 bool disp_mode_changed=0, disp_mode_changed_with_delay=0;
 // time to compare against
@@ -41,7 +40,7 @@ void sendMultiPacketData();
 void setup() {
   pinMode(PCM_MUTE_CTL, OUTPUT);
   digitalWrite(PCM_MUTE_CTL, HIGH);
-  delay(100);
+  vTaskDelay(pdMS_TO_TICKS(100));
   if(DEBUGGING_ON) Serial.begin(921600);                 // serial comms for debug
   twai_init();
 }
@@ -50,11 +49,11 @@ void setup() {
 void processDataBuffer(bool disp_mode_override=0, char* up_line_text=nullptr, char* mid_line_text=nullptr, char* low_line_text=nullptr){             // disp_mode_override exists as a simple way to print one-off messages (like board status, errors and such)
   if(!CAN_MessageReady){                      // only prepare new buffers once the previously prepared message has been sent. DIS_forceUpdate is still 1, so this function should be called again next loop
     if(!disp_mode_override){
-      if(disp_mode==0 && (album_buffer[0]!='\0' || title_buffer[0]!='\0' || artist_buffer[0]!='\0')){
+      if((disp_mode==0 || disp_mode==2) && (album_buffer[0]!='\0' || title_buffer[0]!='\0' || artist_buffer[0]!='\0')){
         prepareMultiPacket(utf8_conversion(album_buffer, title_buffer, artist_buffer));               // prepare a 3-line message (audio Title, Album and Artist)
       }
       if(disp_mode==1){
-        prepareMultiPacket(utf8_conversion(coolant_buffer, speed_buffer, voltage_buffer));               // prepare a vehicle dat 
+        prepareMultiPacket(utf8_conversion(coolant_buffer, speed_buffer, voltage_buffer));               // vehicle data buffer
       }
     } else {                                   // overriding buffers, making sure to switch disp_mode_changed_with delay so the message stays there for a while
       prepareMultiPacket(utf8_conversion(up_line_text, mid_line_text, low_line_text));
@@ -76,7 +75,7 @@ void loop() {
       if(DEBUGGING_ON) Serial.println("CAN: TWAI DRIVER UNINSTALL OK");
     } else {
       if(DEBUGGING_ON) Serial.println("CAN: TWAI DRIVER UNINSTALL FAIL!!! Rebooting...");          // total fail - just reboot at this point
-      delay(100);
+      vTaskDelay(pdMS_TO_TICKS(100));
       ESP.restart();
     }
     twai_init();
@@ -86,12 +85,12 @@ void loop() {
     CAN_prevTxFail=0;
   }
   if(CAN_MessageReady){       // CAN_MessageReady is set after the display has been requested is sent. This waits for the display to reply with an ACK (id 0x2C1)
-    delay(5);                // waits a bit because sometimes stuff happens so fast we get the ACK meant for the radio, we need to wait for the radio to stop talking
+    vTaskDelay(pdMS_TO_TICKS(5));                // waits a bit because sometimes stuff happens so fast we get the ACK meant for the radio, we need to wait for the radio to stop talking
     RxMessage.identifier=0x0;                         // workaround for debugging when the bus is not on
     while(!RxMessage.identifier==0x2C1){
       if(DEBUGGING_ON) Serial.println("CAN: Waiting for 0x2C1 ACK...");
       while(twai_receive(&RxMessage, pdMS_TO_TICKS(5))!=ESP_OK){        // wait for the desired message
-        delay(1);                                                         // I've honestly tried everything, refreshing status and alerts. This shit just doesn't work properly
+        vTaskDelay(pdMS_TO_TICKS(1));                                                         // I've honestly tried everything, refreshing status and alerts. This shit just doesn't work properly
       }
     }
     sendMultiPacketData();
@@ -128,6 +127,6 @@ void loop() {
   if(DIS_forceUpdate && disp_mode==0){                       // handles data processing for A2DP AVRC data events
     processDataBuffer();
   }
-  
+
   A2DP_EventHandler();          // process bluetooth and audio flags set by interrupt callbacks
 }

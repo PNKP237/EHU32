@@ -10,15 +10,16 @@ void OTA_start(){
     if(DEBUGGING_ON) Serial.println("TWAI: Stopped successfully.");
   }
   a2dp_sink.end(true);
-  delay(500);
+  vTaskDelay(pdMS_TO_TICKS(500));
   if (!WiFi.softAP(ssid, password)) {
     if(DEBUGGING_ON) Serial.println("FAIL: Soft AP creation failed.");
-    delay(1000);
+    vTaskDelay(pdMS_TO_TICKS(1000));
     ESP.restart();
   } else {
     IPAddress myIP = WiFi.softAPIP();
-    ArduinoOTA.setHostname("EHU32");
     ArduinoOTA
+      .setMdnsEnabled(false)
+      .setRebootOnSuccess(true)
       .onStart([]() {
         String type;
         if (ArduinoOTA.getCommand() == U_FLASH)
@@ -44,7 +45,7 @@ void OTA_start(){
     while(1){
       ArduinoOTA.handle();
       if(OTA_Finished){
-        delay(1000);
+        vTaskDelay(pdMS_TO_TICKS(1000));
         ESP.restart();
       }
     }
