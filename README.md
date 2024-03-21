@@ -7,7 +7,7 @@ This Arduino sketch enables ESP32 to communicate over MS-CAN bus in Opel vehicle
 - reads steering wheel button presses, which allows for **control of connected audio source** (play/pause, previous/next track), basically you can control your phone's music player
 - receives bluetooth metadata from connected audio source and prints it to vehicle's center console display - tested on CID, GID and BID, 1-line and 3-lines are supported - only "Aux" messages are overwritten
 - simulates button presses in Climate Control menu to allow for **one-press enabling/disabling of AC compressor**
-- long pressing "2" button on the radio panel prints **diagnostic data** provided by Electronic Climate Control (ECC module - only Astra H/Zafira B/Corsa D) - Engine coolant temp, Speed + RPMs, battery voltage. Long pressing "1" goes back to audio metadata mode
+- long pressing "2" button on the radio panel prints **diagnostic data** provided by Electronic Climate Control (ECC module - only Astra H/Zafira B/Corsa D/Vectra C facelift) - Engine coolant temp, Speed + RPMs, battery voltage. Long pressing "1" goes back to audio metadata mode
 - Over-the-air updates, holding "8" enables the wifi hotspot (password ehu32updater). Note that this disables CAN and bluetooth A2DP until restart.
 - more to come, hopefully
 
@@ -15,6 +15,8 @@ This Arduino sketch enables ESP32 to communicate over MS-CAN bus in Opel vehicle
 ![IMG_20240217_172706](https://github.com/PNKP237/EHU32/assets/153071841/46e31e0d-70b7-423b-9a04-b4522eb96506)
 
 ![VID_20240224_174250 mp4_snapshot_00 11 305](https://github.com/PNKP237/EHU32/assets/153071841/030defa7-99e6-42d9-bbc5-f6a6a656e597)
+
+Video showing measurement data displayed in real time (warning, contains music!) https://www.youtube.com/watch?v=uxLYr1c_TJA 
 
 ## Building it yourself
 Required hardware: ESP32 board with antenna connector and an antenna (of the classic flavor, A2DP doesn't work on ESP32-C3), PCM5102A DAC module, any CAN transceiver module (in my case MCP2551).
