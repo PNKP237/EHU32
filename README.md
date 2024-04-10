@@ -12,6 +12,10 @@ This Arduino sketch enables ESP32 to communicate over MS-CAN bus in Opel vehicle
 - more to come, hopefully
 
 ## How it looks
+Demo video:
+
+[![Click here to watch EHU32 demo on YouTube](https://img.youtube.com/vi/cj5L4aGAB5w/0.jpg)](https://www.youtube.com/watch?v=cj5L4aGAB5w)
+
 ![IMG_20240217_172706](https://github.com/PNKP237/EHU32/assets/153071841/46e31e0d-70b7-423b-9a04-b4522eb96506)
 
 ![VID_20240224_174250 mp4_snapshot_00 11 305](https://github.com/PNKP237/EHU32/assets/153071841/030defa7-99e6-42d9-bbc5-f6a6a656e597)
