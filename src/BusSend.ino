@@ -1,3 +1,5 @@
+char flowCtlMessage[8]={0x30,0,0x7F,0,0,0,0,0}; // 
+
 // transmits a CAN message with specified payload; sets CAN_prevTxFail in case there was a failure at any point
 void sendPacket(int id, char can_send_buffer[8], int dlc=8){
   TxMessage.identifier=id;
@@ -88,4 +90,10 @@ void requestMeasurementBlocks(){            // request from 0x248, 0x548 respond
   if(DEBUGGING_ON) Serial.println("CAN: Requesting measurement blocks from 0x246");
   char measurement_payload[8]={0x06, 0xAA, 0x01, 0x01, 0x07, 0x10, 0x11};
   sendPacket(0x248, measurement_payload, 7);
+}
+
+// this abuses ISO 15765-2 flow control, if sent fast enough will prevent the radio from writing to the display in time and as such will not blank the display; makes the experience more seamless
+void preventDisplayUpdate(){
+  sendPacket(0x2C1, flowCtlMessage, 8);
+  if(DEBUGGING_ON) Serial.println("CAN: Flow control - preventing display update...");
 }

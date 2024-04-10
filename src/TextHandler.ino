@@ -58,43 +58,43 @@ unsigned int utf8_to_utf16(const char* utf8_buffer, char* utf16_buffer){
 
 // converts UTF-8 strings from arguments to real UTF-16, then compiles a full display message with formatting; returns total bytes written as part of message payload
 int utf8_conversion(char* upper_line_buffer, char* middle_line_buffer, char* lower_line_buffer){
-  int upper_line_buffer_lenght=0, middle_line_buffer_lenght=0, lower_line_buffer_lenght=0;
-  if(upper_line_buffer!=nullptr){                                           // calculating string lenghts to keep track of processed data
-    upper_line_buffer_lenght=utf8_to_utf16(upper_line_buffer, utf16_album);
+  int upper_line_buffer_length=0, middle_line_buffer_length=0, lower_line_buffer_length=0;
+  if(upper_line_buffer!=nullptr){                                           // calculating string lengths to keep track of processed data
+    upper_line_buffer_length=utf8_to_utf16(upper_line_buffer, utf16_album);
   }
   if(middle_line_buffer!=nullptr){
-    middle_line_buffer_lenght=utf8_to_utf16(middle_line_buffer, utf16_title);
+    middle_line_buffer_length=utf8_to_utf16(middle_line_buffer, utf16_title);
   }
   if(lower_line_buffer!=nullptr){
-    lower_line_buffer_lenght=utf8_to_utf16(lower_line_buffer, utf16_artist);
+    lower_line_buffer_length=utf8_to_utf16(lower_line_buffer, utf16_artist);
   }
 
   if(DEBUGGING_ON){               // debug stuff
-    Serial.printf("\nTitle lenght: %d", middle_line_buffer_lenght);
-    Serial.printf("\nAlbum lenght: %d", upper_line_buffer_lenght);
-    Serial.printf("\nArtist lenght: %d", lower_line_buffer_lenght);
+    Serial.printf("\nTitle length: %d", middle_line_buffer_length);
+    Serial.printf("\nAlbum length: %d", upper_line_buffer_length);
+    Serial.printf("\nArtist length: %d", lower_line_buffer_length);
     Serial.println("\nTitle buffer in UTF-8:");
-    for(int i=0;i<middle_line_buffer_lenght;i++){
+    for(int i=0;i<middle_line_buffer_length;i++){
       Serial.printf(" %02X", middle_line_buffer[i]);
     }
     Serial.println("\nTitle buffer in UTF-16:");
-    for(int i=0;i<(middle_line_buffer_lenght*2);i++){
+    for(int i=0;i<(middle_line_buffer_length*2);i++){
       Serial.printf(" %02X", utf16_title[i]);
     }
     Serial.println("\nAlbum buffer in UTF-8:");
-    for(int i=0;i<upper_line_buffer_lenght;i++){
+    for(int i=0;i<upper_line_buffer_length;i++){
       Serial.printf(" %02X", upper_line_buffer[i]);
     }
     Serial.println("\nAlbum buffer in UTF-16:");
-    for(int i=0;i<(upper_line_buffer_lenght*2);i++){
+    for(int i=0;i<(upper_line_buffer_length*2);i++){
       Serial.printf(" %02X", utf16_album[i]);
     }
     Serial.println("\nArtist buffer in UTF-8:");
-    for(int i=0;i<lower_line_buffer_lenght;i++){
+    for(int i=0;i<lower_line_buffer_length;i++){
       Serial.printf(" %02X", lower_line_buffer[i]);
     }
     Serial.println("\nArtist buffer in UTF-16:");
-    for(int i=0;i<(lower_line_buffer_lenght*2);i++){
+    for(int i=0;i<(lower_line_buffer_length*2);i++){
       Serial.printf(" %02X", utf16_artist[i]);
     }
   }
@@ -114,18 +114,18 @@ int utf8_conversion(char* upper_line_buffer, char* middle_line_buffer, char* low
   last_byte_written++;
   utf16buffer[last_byte_written]=0x10;
   last_byte_written++;                                                        // we skip utf16buffer[6], its filled in the end (char count for id 0x10)
-  if(middle_line_buffer_lenght>1){  // if the upper line data is just a space, don't apply formatting - saves 2 frames of data
+  if(middle_line_buffer_length>1){  // if the upper line data is just a space, don't apply formatting - saves 2 frames of data
     for(int i=1;i<=sizeof(DIS_leftadjusted);i++){                               // write left-justified formatting string
       utf16buffer[last_byte_written+i]=DIS_leftadjusted[i-1];
     }
     last_byte_written+=sizeof(DIS_leftadjusted);
     utf16buffer[6]=sizeof(DIS_leftadjusted)/2;
   }
-  for(int i=1;i<=(middle_line_buffer_lenght*2);i++){
+  for(int i=1;i<=(middle_line_buffer_length*2);i++){
     utf16buffer[last_byte_written+i]=utf16_title[i-1];
   }
-  last_byte_written+=(middle_line_buffer_lenght*2);
-  utf16buffer[6]+=middle_line_buffer_lenght;  // this is static, char count = title+(formatting/2)
+  last_byte_written+=(middle_line_buffer_length*2);
+  utf16buffer[6]+=middle_line_buffer_length;  // this is static, char count = title+(formatting/2)
 
   int album_count_pos=10;
   // ALBUM FIELD
@@ -133,18 +133,18 @@ int utf8_conversion(char* upper_line_buffer, char* middle_line_buffer, char* low
   utf16buffer[last_byte_written]=0x11;
   last_byte_written++;
   album_count_pos=last_byte_written;
-  if(upper_line_buffer_lenght>=1){  // if the upper line data is just a space, don't apply formatting - saves 2 frames of data
+  if(upper_line_buffer_length>=1){  // if the upper line data is just a space, don't apply formatting - saves 2 frames of data
     for(int i=1;i<=sizeof(DIS_smallfont);i++){                               // formatting - small text
       utf16buffer[last_byte_written+i]=DIS_smallfont[i-1];
     }
     last_byte_written+=sizeof(DIS_smallfont);
     utf16buffer[album_count_pos]=sizeof(DIS_smallfont)/2;
   }
-  for(int i=1;i<=(upper_line_buffer_lenght*2);i++){
+  for(int i=1;i<=(upper_line_buffer_length*2);i++){
     utf16buffer[last_byte_written+i]=utf16_album[i-1];
   }
-  last_byte_written+=(upper_line_buffer_lenght*2);
-  utf16buffer[album_count_pos]+=upper_line_buffer_lenght;
+  last_byte_written+=(upper_line_buffer_length*2);
+  utf16buffer[album_count_pos]+=upper_line_buffer_length;
 
   int artist_count_pos=album_count_pos;
     // ARTIST FIELD
@@ -152,18 +152,18 @@ int utf8_conversion(char* upper_line_buffer, char* middle_line_buffer, char* low
   utf16buffer[last_byte_written]=0x12;
   last_byte_written++;
   artist_count_pos=last_byte_written;
-  if(lower_line_buffer_lenght>=1){  // if the upper line data is just a space, don't apply formatting - saves 2 frames of data
+  if(lower_line_buffer_length>=1){  // if the upper line data is just a space, don't apply formatting - saves 2 frames of data
     for(int i=1;i<=sizeof(DIS_smallfont);i++){                               // formatting - small text
       utf16buffer[last_byte_written+i]=DIS_smallfont[i-1];
     }
     last_byte_written+=sizeof(DIS_smallfont);
     utf16buffer[artist_count_pos]=sizeof(DIS_smallfont)/2;
   }
-  for(int i=1;i<=(lower_line_buffer_lenght*2);i++){
+  for(int i=1;i<=(lower_line_buffer_length*2);i++){
     utf16buffer[last_byte_written+i]=utf16_artist[i-1];
   }
-  last_byte_written+=(lower_line_buffer_lenght*2);
-  utf16buffer[artist_count_pos]+=lower_line_buffer_lenght;
+  last_byte_written+=(lower_line_buffer_length*2);
+  utf16buffer[artist_count_pos]+=lower_line_buffer_length;
 
   if((last_byte_written+1)%7==0){                   // if the amount of bytes were to result in a full packet (ie no unused bytes), add a char to overflow into the next packet
     utf16buffer[artist_count_pos]+=1;          // workaround because if the packets are full the display would ignore the message

@@ -5,7 +5,7 @@ void twai_init(){
   g_config.tx_queue_len=5;
   g_config.intr_flags=(ESP_INTR_FLAG_LEVEL1 & ESP_INTR_FLAG_IRAM);
   twai_timing_config_t t_config =  {.brp = 42, .tseg_1 = 15, .tseg_2 = 4, .sjw = 3, .triple_sampling = false};    // set CAN prescalers and time quanta for 95kbit
-  twai_filter_config_t f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();         // TODO: set up proper filters
+  twai_filter_config_t f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
   TxMessage.extd=0;                      // TxMessage settings - not extended ID CAN packet
   TxMessage.rtr=0;                       // not retransmission packet
   TxMessage.ss=0;                        // don't transmit the packet as a single shot -> less chance of an error this way
@@ -35,24 +35,22 @@ void sendPacket(int id, char can_send_buffer[8], int dlc);
 // process incoming CAN messages until there is none left in the buffer; picks appropriate action based on message identifier
 void canReceive(){                                               // logical filter based on the CAN ID
   while(twai_receive(&RxMessage, pdMS_TO_TICKS(10)==ESP_OK && !CAN_MessageReady)){
-    if(!RxMessage.rtr){
-      switch (RxMessage.identifier){
-        case 0x201: canDecodeEhuButtons();
-                    break;
-        case 0x206: canDecodeWheel();
-                    break;
-        case 0x208: canDecodeAC();
-                    break;
-        case 0x501: a2dp_shutdown();
-                    break;
-        case 0x548: if(disp_mode==1) canUpdateBodyData();
-                    break;
-        case 0x4ec: if(disp_mode==3) canUpdateCoolant();       // temporarily unused, but should work without ECC module
-                    break;
-        case 0x6c1: canUpdateDisplay();
-                    break;
-        default:    break;
-      }
+    switch (RxMessage.identifier){
+      case 0x201: canDecodeEhuButtons();
+                  break;
+      case 0x206: canDecodeWheel();
+                  break;
+      case 0x208: canDecodeAC();
+                  break;
+      case 0x501: a2dp_shutdown();
+                  break;
+      case 0x548: if(disp_mode==1) canUpdateBodyData();
+                  break;
+      case 0x4ec: if(disp_mode==3) canUpdateCoolant();       // temporarily unused, but should work without ECC module
+                  break;
+      case 0x6c1: canUpdateDisplay();
+                  break;
+      default:    break;
     }
   }
 }
@@ -129,8 +127,8 @@ void canUpdateDisplay(){
   }
   if(DIS_autoupdate && disp_mode!=-1){            // don't bother checking the data if there's no need to update the display
     if(RxMessage.data[0]==0x10 && RxMessage.data[1]<0x40){       // we check if the total payload of radio's message is small, if yes assume it's an Aux message
-      //Serial.println("Got 6C1 # 10 XX...");
-      vTaskDelay(pdMS_TO_TICKS(50));
+      preventDisplayUpdate();             // this hack prevents radio from transmitting the entirety of an Aux message
+      vTaskDelay(pdMS_TO_TICKS(10));
       sendMultiPacket();
     }
   }
@@ -208,7 +206,6 @@ void canDecodeEhuButtons(){
 }
 
 void canActionEhuButton0(){
-
 }
 
 void canActionEhuButton1(){         // regular audio metadata mode
@@ -239,9 +236,6 @@ void canActionEhuButton6(){
 }
 
 void canActionEhuButton7(){
-  a2dp_sink.disconnect();
-  vTaskDelay(pdMS_TO_TICKS(1000));
-  ESP.restart();
 }
 
 void canActionEhuButton8(){

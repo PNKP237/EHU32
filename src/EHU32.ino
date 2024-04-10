@@ -5,17 +5,16 @@
   Arduino runs: on core 1
   Partition scheme: Minimal SPIFFS (1.9MB APP with OTA/190KB SPIFFS)
 */
-
+#include "AudioTools.h"
 #include "BluetoothA2DPSink.h"
 #include "driver/twai.h"
 #include <WiFi.h>
 #include <WiFiAP.h>
-#include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 
 bool DEBUGGING_ON=0;
 // pin definitions
-const int PCM_MUTE_CTL=23;            // this pin controls PCM5102s soft-mute function
+const int PCM_MUTE_CTL=23, SD_CS_PIN=32;            // this pin controls PCM5102s soft-mute function
 // CAN buffers
 uint32_t alerts_triggered;
 static twai_message_t RxMessage, TxMessage;
@@ -28,8 +27,8 @@ float CAN_data_coolant=0, CAN_data_voltage=0;
 // global bluetooth flags
 bool ehu_started=0, a2dp_started=0, bt_connected=0, bt_state_changed=0, bt_audio_playing=0, audio_state_changed=0;
 // data buffers
-static char utf16buffer[384], utf16_title[128], utf16_artist[128], utf16_album[128], CAN_MsgArray[64][8], title_buffer[64], artist_buffer[64], album_buffer[64], coolant_buffer[32], speed_buffer[32], voltage_buffer[32];
-// display mode 0 -> song metadata, 1 -> body data, 2 -> MP3 player -1 -> prevent screen updates
+static char utf16buffer[512], utf16_title[128], utf16_artist[128], utf16_album[128], CAN_MsgArray[64][8], title_buffer[64], artist_buffer[64], album_buffer[64], coolant_buffer[32], speed_buffer[32], voltage_buffer[32];
+// display mode 0 -> song metadata, 1 -> body data, -1 -> prevent screen updates
 int disp_mode=3;
 bool disp_mode_changed=0, disp_mode_changed_with_delay=0;
 // time to compare against
@@ -95,7 +94,7 @@ void loop() {
     }
     sendMultiPacketData();
   } else {                                   // this could use a rewrite
-    if(DEBUGGING_ON && status_info.msgs_to_rx!=0){Serial.printf("CAN: Got messages %d messages in RX queue!\n", status_info.msgs_to_rx);}
+    if(DEBUGGING_ON && status_info.msgs_to_rx!=0){Serial.printf("CAN: Got messages %d messages in RX queue!\r\n\b", status_info.msgs_to_rx);}
     canReceive();             // read data from RX buffer
   }
 
