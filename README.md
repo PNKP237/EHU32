@@ -22,6 +22,9 @@ Demo video:
 
 Video showing measurement data displayed in real time (warning, contains music!) https://www.youtube.com/watch?v=uxLYr1c_TJA 
 
+## How it works
+If you came here looking for inspiration I'd recommend checking out the [wiki page](https://github.com/PNKP237/EHU32/wiki). I have documented some basics that might come in handy when developing your own addons for these vehicles.
+
 ## Building it yourself
 Required hardware: ESP32 board with antenna connector and an antenna (of the classic flavor, A2DP doesn't work on ESP32-C3), PCM5102A DAC module, any CAN transceiver module (in my case MCP2551).
 Required connections:
@@ -36,6 +39,9 @@ Discrete PCB with everything on board is in the making, once software quirks are
 
 Note that this should be soldered directly in the radio unit as the OBD-II port only provides unswitched 12V. Powering it from a 5V car charger also works.
 Do not connect headphones to the DAC module, its output is supposed to only be connected to amplifier input - in case of this project either the AUX socket of radio's internal AUX input.
+
+If you're successful in putting it together and satisfied with operation of EHU32 then I would be extremely grateful if you can share a photo or a short video showing the module in action!
+Any kind of feedback is valuable to me - be it issues, general usage or recommendations for additional functionality, I'll be happy to hear them.
 
 ## Compilation notes
 TWAI driver written by ESP as part of their ESP-IDF framework isn't perfect. To ensure everything works properly you'll need to modify "sdkconfig" which is located in %USERPROFILE%\AppData\Local\Arduino15\packages\esp32\hardware\esp32\version\tools\sdk\esp32\
@@ -56,8 +62,8 @@ CONFIG_TWAI_ERRATA_FIX_RX_FIFO_CORRUPT=y
 In Arduino IDE set the following: Events on core 0, Arduino on core 1, partition scheme - Minimal SPIFFS.
 
 ### Credits
-Depends on Arduino ESP32-A2DP library by pschatzmann: https://github.com/pschatzmann/ESP32-A2DP
+Depends on Arduino ESP32-A2DP library by pschatzmann: [https://github.com/pschatzmann/ESP32-A2DP](https://github.com/pschatzmann/ESP32-A2DP)
 
-Reverse engineering of the vehicles various messages was done by JJToB: https://github.com/JJToB/Car-CAN-Message-DB
+Reverse engineering of the vehicles various messages was done by JJToB: [https://github.com/JJToB/Car-CAN-Message-DB](https://github.com/JJToB/Car-CAN-Message-DB)
 
 This project comes with absolutely no warranty of any kind, I'm not responsible for your car going up in flames.
