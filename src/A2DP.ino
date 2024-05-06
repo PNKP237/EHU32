@@ -1,24 +1,34 @@
 I2SStream i2s;
 BluetoothA2DPSink a2dp_sink(i2s);
 
+volatile bool md_album_recvd=0, md_artist_recvd=0, md_title_recvd=0;
+
 // updates the buffers
 void avrc_metadata_callback(uint8_t md_type, const uint8_t *data2) {  // fills the song title buffer with data, updates text_lenght with the amount of chars
   switch(md_type){
-    case 0x1: clear_buffer(title_buffer);
+    case 0x1: memset(title_buffer, 0, sizeof(title_buffer));
               snprintf(title_buffer, sizeof(title_buffer), "%s", data2);
-              if(DEBUGGING_ON) Serial.printf("\nA2DP: Received title: \"%s\"", data2);
+              DEBUG_PRINTF("\nA2DP: Received title: \"%s\"", data2);
+              md_title_recvd=1;
               break;
-    case 0x2: clear_buffer(artist_buffer);
+    case 0x2: memset(artist_buffer, 0, sizeof(artist_buffer));
               snprintf(artist_buffer, sizeof(artist_buffer), "%s", data2);
-              if(DEBUGGING_ON) Serial.printf("\nA2DP: Received artist: \"%s\"", data2);
+              DEBUG_PRINTF("\nA2DP: Received artist: \"%s\"", data2);
+              md_artist_recvd=1;
               break;
-    case 0x4: clear_buffer(album_buffer);
+    case 0x4: memset(album_buffer, 0, sizeof(album_buffer));
               snprintf(album_buffer, sizeof(album_buffer), "%s", data2);
-              if(DEBUGGING_ON) Serial.printf("\nA2DP: Received album: \"%s\"", data2);
+              DEBUG_PRINTF("\nA2DP: Received album: \"%s\"", data2);
+              md_album_recvd=1;
               break;
     default:  break;
   }
-  DIS_forceUpdate=1;                                                      // lets the main loop() know that there's a new song title in the buffer
+  if(md_title_recvd && md_artist_recvd && md_album_recvd){
+    DIS_forceUpdate=1;                                                      // lets the main loop() know that there's a new song title in the buffer
+    md_title_recvd=0;
+    md_artist_recvd=0;
+    md_album_recvd=0;
+  }
 }
 
 void a2dp_connection_state_changed(esp_a2d_connection_state_t state, void *ptr){    // callback for bluetooth connection state change
@@ -51,16 +61,15 @@ void a2dp_init(){
   a2dp_sink.set_on_connection_state_changed(a2dp_connection_state_changed);
   a2dp_sink.set_on_audio_state_changed(a2dp_audio_state_changed);
 
-  if(DEBUGGING_ON){
-    a2dp_sink.set_auto_reconnect(false);
-  } else {
-    a2dp_sink.set_auto_reconnect(true);
-  }
+  #ifndef DEBUG
+  a2dp_sink.set_auto_reconnect(true);
+  #endif
 
   a2dp_sink.start("EHU32");         // setting up bluetooth audio sink
   a2dp_started=1;
-  if(DEBUGGING_ON) Serial.println("A2DP: Started!");
-  processDataBuffer(1, "EHU32 Started!", "Bluetooth on", "Waiting for connection...");
+  DEBUG_PRINTLN("A2DP: Started!");
+  disp_mode=0;                      // set display mode to audio metadata on boot
+  writeTextToDisplay(1, "EHU32 v0.9rc started!", "Bluetooth on", "Waiting for connection...");
 }
 
 // handles events such as connecion/disconnection and audio play/pause
@@ -72,26 +81,19 @@ void A2DP_EventHandler(){
   if(audio_state_changed && bt_connected){      // mute external DAC when not playing; bt_connected ensures no "Connected, paused" is displayed, seems that the audio_state_changed callback comes late
     if(bt_audio_playing){
       digitalWrite(PCM_MUTE_CTL, HIGH);
-      DIS_autoupdate=1;
-      if(disp_mode==3) disp_mode=0;
+      DIS_forceUpdate=1;              // force reprinting of audio metadata when the music is playing
     } else {
       digitalWrite(PCM_MUTE_CTL, LOW);
-      processDataBuffer(1, "Bluetooth connected", "", "Paused");
-      DIS_autoupdate=0;
-      if(disp_mode==0) disp_mode=3;
+      writeTextToDisplay(1, "Bluetooth connected", "", "Paused");
     }
     audio_state_changed=0;
   }
 
   if(bt_state_changed){                                   // mute external DAC when not playing
     if(bt_connected){
-      processDataBuffer(1, "Bluetooth connected", "", (char*)a2dp_sink.get_peer_name());
-      disp_mode=0;
-      if(disp_mode==3) disp_mode=0;
+      writeTextToDisplay(1, "Bluetooth connected", "", (char*)a2dp_sink.get_peer_name());
     } else {
-      processDataBuffer(1, "Bluetooth disconnected", "", "");
-      DIS_autoupdate=0;
-      if(disp_mode==0) disp_mode=3;
+      writeTextToDisplay(1, "Bluetooth disconnected", "", "");
     }
     bt_state_changed=0;
   }
@@ -99,18 +101,16 @@ void A2DP_EventHandler(){
 
 // ID 0x501 DB3 0x18 indicates imminent shutdown of the radio and display; disconnect from source
 void a2dp_shutdown(){
-  if(a2dp_started && RxMessage.data[3]==0x18){
-    a2dp_sink.disconnect();
-    a2dp_sink.stop();
-    ehu_started=0;                            // so it is possible to restart and reconnect the source afterwards in the rare case radio is shutdown but ESP32 is still powered up
-    a2dp_started=0;                           // while extremely unlikely to happen in the vehicle, this comes handy for debugging on my desk setup
-    if(DEBUGGING_ON) Serial.println("CAN: EHU went down! Disconnecting A2DP.");
-  }
+  a2dp_sink.disconnect();
+  a2dp_sink.end();
+  ehu_started=0;                            // so it is possible to restart and reconnect the source afterwards in the rare case radio is shutdown but ESP32 is still powered up
+  a2dp_started=0;                           // while extremely unlikely to happen in the vehicle, this comes handy for debugging on my desk setup
+  DEBUG_PRINTLN("CAN: EHU went down! Disconnecting A2DP.");
 }
 
 void a2dp_end(){
   a2dp_sink.disconnect();
-  a2dp_sink.stop();
+  a2dp_sink.end();
   a2dp_started=0;
-  if(DEBUGGING_ON) Serial.println("A2DP: Stopped!");
+  DEBUG_PRINTLN("A2DP: Stopped!");
 }
