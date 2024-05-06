@@ -8,6 +8,8 @@ This Arduino sketch enables ESP32 to communicate over MS-CAN bus in Opel vehicle
 - receives bluetooth metadata from connected audio source and prints it to vehicle's center console display - tested on CID, GID and BID, 1-line and 3-lines are supported - only "Aux" messages are overwritten
 - simulates button presses in Climate Control menu to allow for **one-press enabling/disabling of AC compressor**
 - long pressing "2" button on the radio panel prints **diagnostic data** provided by Electronic Climate Control (ECC module - only Astra H/Zafira B/Corsa D/Vectra C facelift) - Engine coolant temp, Speed + RPMs, battery voltage. Long pressing "1" goes back to audio metadata mode
+- in case the vehicle is not equipped with electronic climate control, EHU32 will print data read provided by the **display module** (only coolant temperature, RPMs and speed)
+- long pressing "3" button prints just the coolant temperature in a single line - useful for 1-line displays such as GID, BID and TID
 - Over-the-air updates, holding "8" enables the wifi hotspot (password ehu32updater). Note that this disables CAN and bluetooth A2DP until restart.
 - more to come, hopefully
 
