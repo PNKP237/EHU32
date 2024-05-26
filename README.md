@@ -24,7 +24,11 @@ Demo video:
 
 Video showing measurement data displayed in real time (warning, contains music!) https://www.youtube.com/watch?v=uxLYr1c_TJA 
 
-## How it works
+## How it works and general usage tips
+While this project aims to make the experience as seamless as possible, there are some shortcomings that have to be addressed:
+- the audio source volume has to be set to maximum in order to avoid unnecessary noise. Adjust the volume as usual, using the radio's volume control knob or steering wheel buttons.
+- sometimes "Aux" will still show up, about once per 20 minutes of driving for like 5 seconds. While unlikely to happen with CD30, it does sometimes happen with CD70 due to the fact that the radio is sometimes sending additional data along with "Aux" text, which when blocked would sometimes result in the radio shutting down.
+
 If you came here looking for inspiration I'd recommend checking out the [wiki page](https://github.com/PNKP237/EHU32/wiki). I have documented some basics that might come in handy when developing your own addons for these vehicles.
 
 ## Building it yourself
