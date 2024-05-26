@@ -1,5 +1,7 @@
+#include <A2DPVolumeControl.h>
 I2SStream i2s;
 BluetoothA2DPSink a2dp_sink(i2s);
+A2DPNoVolumeControl noVolumeControl;
 
 volatile bool md_album_recvd=0, md_artist_recvd=0, md_title_recvd=0;
 
@@ -60,16 +62,15 @@ void a2dp_init(){
   a2dp_sink.set_avrc_metadata_attribute_mask(ESP_AVRC_MD_ATTR_TITLE | ESP_AVRC_MD_ATTR_ARTIST | ESP_AVRC_MD_ATTR_ALBUM);
   a2dp_sink.set_on_connection_state_changed(a2dp_connection_state_changed);
   a2dp_sink.set_on_audio_state_changed(a2dp_audio_state_changed);
-
-  #ifndef DEBUG
-  a2dp_sink.set_auto_reconnect(true);
-  #endif
+  a2dp_sink.set_volume_control(&noVolumeControl);
+  a2dp_sink.set_reconnect_delay(500);
+  a2dp_sink.set_auto_reconnect(true, 2000);
 
   a2dp_sink.start("EHU32");         // setting up bluetooth audio sink
   a2dp_started=1;
   DEBUG_PRINTLN("A2DP: Started!");
   disp_mode=0;                      // set display mode to audio metadata on boot
-  writeTextToDisplay(1, "EHU32 v0.9rc started!", "Bluetooth on", "Waiting for connection...");
+  writeTextToDisplay(1, "EHU32 v0.9.1 started!", "Bluetooth on", "Waiting for connection...");
 }
 
 // handles events such as connecion/disconnection and audio play/pause
@@ -91,6 +92,7 @@ void A2DP_EventHandler(){
 
   if(bt_state_changed){                                   // mute external DAC when not playing
     if(bt_connected){
+      a2dp_sink.set_volume(127);        // workaround to ensure max volume being applied on successful connection
       writeTextToDisplay(1, "Bluetooth connected", "", (char*)a2dp_sink.get_peer_name());
     } else {
       writeTextToDisplay(1, "Bluetooth disconnected", "", "");
@@ -101,16 +103,11 @@ void A2DP_EventHandler(){
 
 // ID 0x501 DB3 0x18 indicates imminent shutdown of the radio and display; disconnect from source
 void a2dp_shutdown(){
+  ESP.restart();                            // very crude workaround until I find a better way to deal with reconnection problems after end() is called
+  delay(1000);
   a2dp_sink.disconnect();
   a2dp_sink.end();
   ehu_started=0;                            // so it is possible to restart and reconnect the source afterwards in the rare case radio is shutdown but ESP32 is still powered up
   a2dp_started=0;                           // while extremely unlikely to happen in the vehicle, this comes handy for debugging on my desk setup
   DEBUG_PRINTLN("CAN: EHU went down! Disconnecting A2DP.");
-}
-
-void a2dp_end(){
-  a2dp_sink.disconnect();
-  a2dp_sink.end();
-  a2dp_started=0;
-  DEBUG_PRINTLN("A2DP: Stopped!");
 }
