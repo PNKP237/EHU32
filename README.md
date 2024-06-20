@@ -8,9 +8,10 @@ This Arduino sketch enables ESP32 to communicate over MS-CAN bus in Opel vehicle
 - receives bluetooth metadata from connected audio source and prints it to vehicle's center console display - tested on CID, GID and BID, 1-line and 3-lines are supported - only "Aux" messages are overwritten
 - simulates button presses in Climate Control menu to allow for **one-press enabling/disabling of AC compressor**
 - long pressing "2" button on the radio panel prints **diagnostic data** provided by Electronic Climate Control (ECC module - only Astra H/Zafira B/Corsa D/Vectra C facelift) - Engine coolant temp, Speed + RPMs, battery voltage. Long pressing "1" goes back to audio metadata mode
-- in case the vehicle is not equipped with electronic climate control, EHU32 will print data read provided by the **display module** (only coolant temperature, RPMs and speed)
+- in case the vehicle is not equipped with electronic climate control, EHU32 will print data provided by the **display module** (reduced data set - only coolant temperature, RPMs and speed)
 - long pressing "3" button prints just the coolant temperature in a single line - useful for 1-line displays such as GID, BID and TID
 - Over-the-air updates, holding "8" enables the wifi hotspot (password ehu32updater). Note that this disables CAN and bluetooth A2DP until restart.
+- it is also possible to disable printing to the screen altogether by holding "9". This does not affect functionality.
 - more to come, hopefully
 
 ## How it looks
@@ -27,7 +28,7 @@ Video showing measurement data displayed in real time (warning, contains music!)
 ## How it works and general usage tips
 While this project aims to make the experience as seamless as possible, there are some shortcomings that have to be addressed:
 - the audio source volume has to be set to maximum in order to avoid unnecessary noise. Adjust the volume as usual, using the radio's volume control knob or steering wheel buttons.
-- sometimes "Aux" will still show up, about once per 20 minutes of driving for like 5 seconds. While unlikely to happen with CD30, it does sometimes happen with CD70 due to the fact that the radio is sometimes sending additional data along with "Aux" text, which when blocked would sometimes result in the radio shutting down.
+- sometimes "Aux" will still show up, ~~about once per 20 minutes of driving for like 5 seconds~~. Turns out this happens more often when going in or out of various FM stations - the radio unit transmits RDS data that's not printed but is used to, for example, illuminate status indicators, such as the __[TA]__ symbol.
 
 If you came here looking for inspiration I'd recommend checking out the [wiki page](https://github.com/PNKP237/EHU32/wiki). I have documented some basics that might come in handy when developing your own addons for these vehicles.
 
@@ -39,7 +40,7 @@ Required connections:
 - I2S DAC: GND to SCK, D26 to BCK, D22 to DIN, D25 to LCK, D23 to XSMT;
 - Configure jumpers on the back of the I2S DAC module: short 1-L, 2-L, 4-L, 3 NOT SHORTED.
 
-This repo contains a PDF schematic outlining which connections are required to make this work.
+This repo contains a PDF schematic outlining which connections are required to make this work and [this post](https://github.com/PNKP237/EHU32/issues/3#issuecomment-2121866276) shows how to install the modules within a CD30MP3 radio unit.
 
 Discrete PCB with everything on board is in the making, once software quirks are resolved and I find some free time to finish the layout.
 
