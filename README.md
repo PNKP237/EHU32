@@ -11,7 +11,7 @@ This Arduino sketch enables ESP32 to communicate over MS-CAN bus in Opel vehicle
 - in case the vehicle is not equipped with electronic climate control, EHU32 will print data provided by the **display module** (reduced data set - only coolant temperature, RPMs and speed)
 - long pressing "3" button prints just the coolant temperature in a single line - useful for 1-line displays such as GID, BID and TID
 - Over-the-air updates, holding "8" enables the wifi hotspot (password ehu32updater). Note that this disables CAN and bluetooth A2DP until restart.
-- it is also possible to disable printing to the screen altogether by holding "9". This does not affect functionality.
+- it is also possible to disable printing to the screen altogether by holding "9". This does not affect other functionality.
 - more to come, hopefully
 
 ## How it looks
