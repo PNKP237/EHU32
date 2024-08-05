@@ -53,6 +53,8 @@ Any kind of feedback is valuable to me - be it issues, general usage or recommen
 ## Compilation notes
 TWAI driver written by ESP as part of their ESP-IDF framework isn't perfect. To ensure everything works properly you'll need to modify "sdkconfig" which is located in %USERPROFILE%\AppData\Local\Arduino15\packages\esp32\hardware\esp32\version\tools\sdk\esp32\
 
+As of **ESP32 Arduino core v3.x.x** this file is located in %USERPROFILE%\AppData\Local\Arduino15\packages\esp32\tools\esp32-arduino-libs\idf-release_vx.x-xxxxxxxxxx\esp32\
+
 Under "TWAI configuration" section enable **CONFIG_TWAI_ISR_IN_IRAM** and modify **CONFIG_TWAI_ERRATA_FIX_TX_INTR_LOST** so the errata fix is not applied. The whole section should look like this:
 ```
 #
@@ -69,7 +71,7 @@ CONFIG_TWAI_ERRATA_FIX_RX_FIFO_CORRUPT=y
 In Arduino IDE set the following: Events on core 0, Arduino on core 1, partition scheme - Minimal SPIFFS.
 
 ### Credits
-Depends on Arduino ESP32-A2DP library by pschatzmann: [https://github.com/pschatzmann/ESP32-A2DP](https://github.com/pschatzmann/ESP32-A2DP)
+Depends on Arduino ESP32-A2DP and arduino-audio-tools libraries by pschatzmann: [https://github.com/pschatzmann/ESP32-A2DP](https://github.com/pschatzmann/ESP32-A2DP) [https://github.com/pschatzmann/arduino-audio-tools](https://github.com/pschatzmann/arduino-audio-tools)
 
 Reverse engineering of the vehicles various messages was done by JJToB: [https://github.com/JJToB/Car-CAN-Message-DB](https://github.com/JJToB/Car-CAN-Message-DB)
 
