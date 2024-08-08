@@ -1,7 +1,7 @@
 const char* ssid = "EHU32-OTA";
 const char* password = "ehu32updater";
 volatile bool OTA_running=0, OTA_Finished=0;
-
+#ifndef DEBUG
 // initialize OTA functionality as a way to update firmware; this disables CAN and A2DP functionality!
 void OTA_start(){
   twai_stop();
@@ -44,3 +44,4 @@ void OTA_Handle(){
     }
   }
 }
+#endif

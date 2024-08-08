@@ -53,7 +53,7 @@ void canReceiveTask(void *pvParameters){
           if(disp_mode!=-1){            // don't bother checking the data if there's no need to update the display
             if(Recvd_CAN_MSG.data[0]==0x10 && (Recvd_CAN_MSG.data[1]<0x40 || (Recvd_CAN_MSG.data[1]<0x4F && Recvd_CAN_MSG.data[2]==0x50))){       // we check if the total payload of radio's message is small, if yes assume it's an Aux message
               DEBUG_PRINTLN("CAN: Received display update, trying to block");
-              twai_transmit(&Msg_PreventDisplayUpdate, pdMS_TO_TICKS(10));  // radio blocking msg has to be transmitted ASAP, which is why we skip the queue
+              twai_transmit(&Msg_PreventDisplayUpdate, pdMS_TO_TICKS(30));  // radio blocking msg has to be transmitted ASAP, which is why we skip the queue
               twai_read_alerts(&alerts_triggered, pdMS_TO_TICKS(10));    // read stats
               if(alerts_triggered & TWAI_ALERT_TX_SUCCESS){
                 CAN_flowCtlFail=0;
@@ -62,7 +62,7 @@ void canReceiveTask(void *pvParameters){
                 CAN_flowCtlFail=1;
                 DEBUG_PRINTLN("CAN: Blocking failed!");
               }
-              if(disp_mode==0) vTaskResume(canDisplayTaskHandle); // only retransmit the msg for audio metadata mode
+              if(disp_mode==0 || disp_mode==2) vTaskResume(canDisplayTaskHandle); // only retransmit the msg for audio metadata mode and single line coolant, since these don't update frequently
             }
           }
         }
@@ -136,7 +136,7 @@ void canProcessTask(void *pvParameters){
         break;
       }
       case 0x208: {                               // AC panel button event
-        if((RxMsg.data[0]==0x0) && (RxMsg.data[1]==0x17) && (RxMsg.data[2]<0x02)){          // FIXME!
+        if((RxMsg.data[0]==0x0) && (RxMsg.data[1]==0x17) && (RxMsg.data[2]<0x01)){          // FIXME!
           vTaskResume(canAirConMacroTaskHandle);   // start AC macro
         }
         break;
@@ -150,13 +150,19 @@ void canProcessTask(void *pvParameters){
         break;
       }
       case 0x546: {                             // display measurement blocks (used as a fallback)
-          switch(RxMsg.data[0]){              // measurement block ID -> update data which the message is referencing
+          if(disp_mode==1 || disp_mode==2) xSemaphoreTake(CAN_MsgSemaphore, portMAX_DELAY);
+          DEBUG_PRINT("CAN: Got measurements from DIS: ");
+          switch(RxMsg.data[0]){              // measurement block ID -> update data which the message is referencing, I may implement more cases in the future which is why switch is there
             case 0x0B:  {             // 0x0B references coolant temps
+              DEBUG_PRINT("coolant\n");
               int CAN_data_coolant=RxMsg.data[5]-40;
               snprintf(voltage_buffer, sizeof(voltage_buffer), "No additional data available");
               snprintf(coolant_buffer, sizeof(coolant_buffer), "Coolant temp: %d%c%cC   ", CAN_data_coolant, 0xC2, 0xB0);
               //snprintf(speed_buffer, sizeof(speed_buffer), "ECC not present"); // -> speed received as part of the 0x4E8 msg
               CAN_coolant_recvd=1;
+              #ifdef DEBUG
+              CAN_speed_recvd=1;
+              #endif
               break;
             }
             default:    break;
@@ -166,15 +172,19 @@ void canProcessTask(void *pvParameters){
             CAN_coolant_recvd=0;
             CAN_new_dataSet_recvd=1;
           }
+          if(disp_mode==1 || disp_mode==2) xSemaphoreGive(CAN_MsgSemaphore);  // let the message processing continue
         break;
       }
       case 0x548: {                             // AC measurement blocks
+          if(disp_mode==1 || disp_mode==2) xSemaphoreTake(CAN_MsgSemaphore, portMAX_DELAY);    // if we're in body data mode, take the semaphore to prevent the buffer being modified while the display message is being compiled
+          DEBUG_PRINT("CAN: Got measurements from ECC: ");
           switch(RxMsg.data[0]){              // measurement block ID -> update data which the message is referencing
             case 0x07:  {             // 0x10 references battery voltage
               CAN_data_voltage=RxMsg.data[2];
               CAN_data_voltage/=10;
               snprintf(voltage_buffer, sizeof(voltage_buffer), "Voltage: %.1f V  ", CAN_data_voltage);
               CAN_voltage_recvd=1;
+              DEBUG_PRINT("battery voltage\n");
               break;
             }
             case 0x10:  {             // 0x10 references coolant temps
@@ -183,6 +193,7 @@ void canProcessTask(void *pvParameters){
               CAN_data_coolant/=10;
               snprintf(coolant_buffer, sizeof(coolant_buffer), "Coolant temp: %.1f%c%cC   ", CAN_data_coolant, 0xC2, 0xB0);
               CAN_coolant_recvd=1;
+              DEBUG_PRINT("coolant\n");
               break;
             }
             case 0x11:  {             // 0x11 references RPMs and speed
@@ -190,6 +201,7 @@ void canProcessTask(void *pvParameters){
               CAN_data_speed=RxMsg.data[4];
               snprintf(speed_buffer, sizeof(speed_buffer), "%d km/h %d RPM     ", CAN_data_speed, CAN_data_rpm);
               CAN_speed_recvd=1;
+              DEBUG_PRINT("speed and RPMs\n");
               break; 
             }
             default:    break;
@@ -200,14 +212,17 @@ void canProcessTask(void *pvParameters){
             CAN_speed_recvd=0;
             CAN_new_dataSet_recvd=1;
           }
+          if(disp_mode==1 || disp_mode==2) xSemaphoreGive(CAN_MsgSemaphore);  // let the message processing continue
         break;
       }
-      case 0x4E8: {                               // this provides speed and RPMs right from the bus
-        if(disp_mode==1 && !ECC_present){
+      case 0x4E8: {                               // this provides speed and RPMs right from the bus, only for disp_mode==1
+        if((disp_mode==1) && !ECC_present){
+          if(disp_mode==1) xSemaphoreTake(CAN_MsgSemaphore, portMAX_DELAY);
           CAN_data_rpm=(RxMsg.data[2]<<8 | RxMsg.data[3]);
           CAN_data_speed=RxMsg.data[4];
           snprintf(speed_buffer, sizeof(speed_buffer), "%d km/h %d RPM     ", CAN_data_speed, CAN_data_rpm);
           CAN_speed_recvd=1;
+          if(disp_mode==1) xSemaphoreGive(CAN_MsgSemaphore);  // let the message processing continue
         }
         break;
       }
@@ -219,6 +234,7 @@ void canProcessTask(void *pvParameters){
           a2dp_sink.reconnect();
           ehu_started=1;
         }
+        xTaskNotifyGive(canWatchdogTaskHandle);    // reset the watchdog
         break;
       }
       case 0x6C8: {           // if any ECC module message is received, assume ECC is available to request measurement data from
@@ -330,9 +346,11 @@ void CANsimTask(void *pvParameters){
         }
         case 'd': {
           Serial.print("CURRENT FLAGS CAN: ");
-          Serial.printf("CAN_MessageReady=%d CAN_prevTxFail=%d, DIS_forceUpdate=%d, ECC_present=%d \n", CAN_MessageReady, CAN_prevTxFail, DIS_forceUpdate, ECC_present);
+          Serial.printf("CAN_MessageReady=%d CAN_prevTxFail=%d, DIS_forceUpdate=%d, ECC_present=%d, ehu_started=%d \n", CAN_MessageReady, CAN_prevTxFail, DIS_forceUpdate, ECC_present, ehu_started);
           Serial.print("CURRENT FLAGS BODY: ");
           Serial.printf("CAN_voltage_recvd=%d CAN_coolant_recvd=%d, CAN_speed_recvd=%d, CAN_new_dataSet_recvd=%d \n", CAN_voltage_recvd, CAN_coolant_recvd, CAN_speed_recvd, CAN_new_dataSet_recvd);
+          Serial.print("TIME AND STUFF: ");
+          Serial.printf("last_millis_req=%lu last_millis_disp=%lu, millis=%lu \n", last_millis_req, last_millis_disp, millis());
           Serial.printf("CanMsgSemaphore state: %d \n", checkMutexState());
           Serial.printf("TxQueue items: %d, RxQueue items: %d \n", uxQueueMessagesWaiting(canTxQueue), uxQueueMessagesWaiting(canRxQueue));
           break;
@@ -345,13 +363,13 @@ void CANsimTask(void *pvParameters){
 }
 #endif
 
-// this task waits for a flow control packet from the display
+// this task implements ISO 15765-2 (multi-packet transmission over CAN frames) in a crude, but hopefully robust way in order to send frames to the display
 void canDisplayTask(void *pvParameters){
   while(1){
-    if(xSemaphoreTake(CAN_MsgSemaphore, pdMS_TO_TICKS(100))==pdTRUE){          // if the buffer is being accessed, block indefinitely
+    if(xSemaphoreTake(CAN_MsgSemaphore, portMAX_DELAY)==pdTRUE){          // if the buffer is being accessed, block indefinitely
       if(CAN_flowCtlFail){                 // failed transmitting flow control before the display resulting in an error frame, wait for a bit before sending it again, skip queue
         vTaskDelay(pdMS_TO_TICKS(1));
-        twai_transmit(&Msg_PreventDisplayUpdate, pdMS_TO_TICKS(10));  // hope for the best and send flow control again
+        twai_transmit(&Msg_PreventDisplayUpdate, pdMS_TO_TICKS(10));  // hope for the best and send flow control again, skip queue
         CAN_flowCtlFail=0;
         vTaskDelay(pdMS_TO_TICKS(20));
       }
@@ -362,9 +380,9 @@ void canDisplayTask(void *pvParameters){
         sendMultiPacket();
       }
       //xEventGroupWaitBits(CAN_Events, CAN_MessageReady, pdFALSE, pdFALSE, portMAX_DELAY);  // this waits until CAN_MessageReady is set by the transmit function (only in case of a successful TX)
-      if(CAN_MessageReady && !CAN_prevTxFail){  // possibly not needed anymore?        
+      if(CAN_MessageReady && !CAN_prevTxFail){  // possibly not needed anymore? nope, still needed until I'm competent enough to implement EventGroups       
         DEBUG_PRINTLN("CAN: Now waiting for 2C1...");
-        xTaskNotifyWait(0, 0, NULL, portMAX_DELAY);      // waiting for a notification from the canProcessTask once a flow control frame is received
+        xTaskNotifyWait(0, 0, NULL, pdMS_TO_TICKS(100));
         sendMultiPacketData();
         xTaskNotifyStateClear(NULL);
       } else {
@@ -372,14 +390,14 @@ void canDisplayTask(void *pvParameters){
       }
       xSemaphoreGive(CAN_MsgSemaphore);           // release the semaphore
     }
-    vTaskSuspend(NULL);
+    vTaskSuspend(NULL);   // have the display task stop itself
   }
 }
 
 // this task provides asynchronous simulation of button presses on the AC panel, quickly toggling AC
 void canAirConMacroTask(void *pvParameters){
   while(1){
-    vTaskDelay(100);
+    vTaskDelay(500);    // initial delay has to be extended, in some cases 100ms was not enough to have the AC menu appear on the screen, resulting in the inputs being dropped and often entering the vent config instead
     xQueueSend(canTxQueue, &Msg_ACmacro_down, portMAX_DELAY);
     vTaskDelay(100);
     xQueueSend(canTxQueue, &Msg_ACmacro_press, portMAX_DELAY);
@@ -451,6 +469,7 @@ void sendMultiPacketData(){   // should only be executed after the display ackno
 
 // function to queue a frame requesting measurement blocks
 void requestMeasurementBlocks(){
+  DEBUG_PRINTLN("CAN: Requesting measurements...");
   if(ECC_present){              // request measurement blocks from the climate control module
     xQueueSend(canTxQueue, &Msg_MeasurementRequestECC, portMAX_DELAY);
   } else {
@@ -464,13 +483,14 @@ void canActionEhuButton0(){         // do not use for CD30! it does not have a "
 
 void canActionEhuButton1(){         // regular audio metadata mode
   if(disp_mode!=0){
-    disp_mode=0;
+    if(bt_audio_playing) disp_mode=0;   // we have to check whether the music is playing, else we the buffered song title just stays there
     DIS_forceUpdate=1;
   }
 }
 
 void canActionEhuButton2(){         // printing speed+rpm, coolant and voltage from measurement blocks
   if(disp_mode!=1){
+    CAN_new_dataSet_recvd=0;
     disp_mode=1;
     disp_mode_changed=1;
     DEBUG_PRINTLN("DISP_MODE: Switching to vehicle data...");
@@ -479,6 +499,7 @@ void canActionEhuButton2(){         // printing speed+rpm, coolant and voltage f
 
 void canActionEhuButton3(){
   if(disp_mode!=2){
+    CAN_new_dataSet_recvd=0;
     disp_mode=2;
     disp_mode_changed=1;
     DEBUG_PRINTLN("DISP_MODE: Switching to 1-line coolant...");
