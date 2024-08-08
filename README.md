@@ -1,6 +1,12 @@
 # **EHU32**
 
-This Arduino sketch enables ESP32 to communicate over MS-CAN bus in Opel vehicles such as Astra H, Zafira B, Vectra C, Corsa D (and more) in addition to acting as a bluetooth audio receiver. 
+EHU32 brings bluetooth audio to your Opel/Vauxhall vehicle, integrating with the onboard display and radio. 
+
+Compatible with vehicles equipped with CID/GID/BID/TID display units, additionally giving you the option to view live diagnostic data. 
+
+**EHU32 is non-invasive** and does not require modification to the existing hardware in your car - it can be connected to the OBD-II diagnostic port and radio unit's Aux input. 
+
+**Simple schematic, small bill of materials and inexpensive, widely available components** are what makes EHU32 a great addition to your vehicle.
 
 ## Features
 - **Bluetooth (A2DP) audio sink**, data is output to an external I2S DAC, such as PCM5102
@@ -19,6 +25,8 @@ Demo video:
 
 [![Click here to watch EHU32 demo on YouTube](https://img.youtube.com/vi/cj5L4aGAB5w/0.jpg)](https://www.youtube.com/watch?v=cj5L4aGAB5w)
 
+Here's another, extended demo showing EHU32 in action: [https://www.youtube.com/watch?v=8fi7kX9ci_o](https://www.youtube.com/watch?v=8fi7kX9ci_o)
+
 ![IMG_20240217_172706](https://github.com/PNKP237/EHU32/assets/153071841/46e31e0d-70b7-423b-9a04-b4522eb96506)
 
 ![VID_20240224_174250 mp4_snapshot_00 11 305](https://github.com/PNKP237/EHU32/assets/153071841/030defa7-99e6-42d9-bbc5-f6a6a656e597)
@@ -36,7 +44,7 @@ If you came here looking for inspiration I'd recommend checking out the [wiki pa
 Required hardware: ESP32 board with antenna connector and an antenna (of the classic flavor, A2DP doesn't work on ESP32-C3), PCM5102A DAC module, any CAN transceiver module (in my case MCP2551).
 Required connections:
 - 5V to: ESP32 VIN pin, MCP2551 VCC pin, PCM5102 VIN pin;
-- CAN bus: D4 to CAN_RX, D5 to CAN_TX, CANL and CANH wired up to the vehicle's MS-CAN (accessible by either OBD-II diagnostic port, radio, display, electronic climate control);
+- CAN bus: D4 to CAN_RX, D5 to CAN_TX, CANL and CANH wired up to the vehicle's MS-CAN (accessible by either OBD-II diagnostic port - CAN-H and CAN-L on pins 3 and 11 respectively, radio, display, electronic climate control);
 - I2S DAC: GND to SCK, D26 to BCK, D22 to DIN, D25 to LCK, D23 to XSMT;
 - Configure jumpers on the back of the I2S DAC module: short 1-L, 2-L, 4-L, 3 NOT SHORTED.
 
@@ -51,9 +59,10 @@ If you're successful in putting it together and satisfied with operation of EHU3
 Any kind of feedback is valuable to me - be it issues, general usage or recommendations for additional functionality, I'll be happy to hear them.
 
 ## Compilation notes
-TWAI driver written by ESP as part of their ESP-IDF framework isn't perfect. To ensure everything works properly you'll need to modify "sdkconfig" which is located in %USERPROFILE%\AppData\Local\Arduino15\packages\esp32\hardware\esp32\version\tools\sdk\esp32\
+Please use version **2.0.17 of ESP32 arduino core**. More recent versions don't seem stable enough, at least in my limited testing. 
+Tested with ESP32-A2DP v1.3.8 and arduino-audio-tools v0.9.8.
 
-As of **ESP32 Arduino core v3.x.x** this file is located in %USERPROFILE%\AppData\Local\Arduino15\packages\esp32\tools\esp32-arduino-libs\idf-release_vx.x-xxxxxxxxxx\esp32\
+TWAI driver written by ESP as part of their ESP-IDF framework isn't perfect. To ensure everything works properly you'll need to modify "sdkconfig" which is located in %USERPROFILE%\AppData\Local\Arduino15\packages\esp32\hardware\esp32\version\tools\sdk\esp32\
 
 Under "TWAI configuration" section enable **CONFIG_TWAI_ISR_IN_IRAM** and modify **CONFIG_TWAI_ERRATA_FIX_TX_INTR_LOST** so the errata fix is not applied. The whole section should look like this:
 ```
