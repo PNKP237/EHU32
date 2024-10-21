@@ -1,7 +1,7 @@
 // below is data required to be included in every line - text formatting is based on those
 const char DIS_leftadjusted[14]={0x00,0x1B,0x00,0x5B,0x00,0x66,0x00,0x53,0x00,0x5F,0x00,0x67,0x00,0x6D}, DIS_smallfont[14]={0x00,0x1B,0x00,0x5B,0x00,0x66,0x00,0x53,0x00,0x5F,0x00,0x64,0x00,0x6D}, DIS_centered[8]={0x00, 0x1B, 0x00, 0x5B, 0x00, 0x63, 0x00, 0x6D}, DIS_rightadjusted[8]={0x00, 0x1B, 0x00, 0x5B, 0x00, 0x72, 0x00, 0x6D};
 
-// process an UTF-8 buffer, returns the amount of chars processed
+// converts an UTF-8 buffer to UTF-16, filters out unsupported chars, returns the amount of chars processed
 unsigned int utf8_to_utf16(const char* utf8_buffer, char* utf16_buffer){
   unsigned int utf16_bytecount=0;
   while (*utf8_buffer!='\0'){
@@ -53,7 +53,7 @@ unsigned int utf8_to_utf16(const char* utf8_buffer, char* utf16_buffer){
 int processDisplayMessage(char* upper_line_buffer, char* middle_line_buffer, char* lower_line_buffer){
   static char utf16_middle_line[128], utf16_lower_line[128], utf16_upper_line[128];
   int upper_line_buffer_length=0, middle_line_buffer_length=0, lower_line_buffer_length=0;
-  if(upper_line_buffer!=nullptr){                                           // calculating string lengths to keep track of processed data
+  if(upper_line_buffer!=nullptr){                                           // converting UTF-8 strings to UTF-16 and calculating string lengths to keep track of processed data
     upper_line_buffer_length=utf8_to_utf16(upper_line_buffer, utf16_upper_line);
   }
   if(middle_line_buffer!=nullptr){
@@ -63,7 +63,7 @@ int processDisplayMessage(char* upper_line_buffer, char* middle_line_buffer, cha
     lower_line_buffer_length=utf8_to_utf16(lower_line_buffer, utf16_lower_line);
   }
 
-  #ifdef DEBUG               // debug stuff
+  #ifdef DEBUG_STRINGS               // debug stuff
     Serial.printf("\nTitle length: %d", middle_line_buffer_length);
     Serial.printf("\nAlbum length: %d", upper_line_buffer_length);
     Serial.printf("\nArtist length: %d", lower_line_buffer_length);
@@ -101,12 +101,12 @@ int processDisplayMessage(char* upper_line_buffer, char* middle_line_buffer, cha
   //DisplayMsg[3]= message size -3
   DisplayMsg[4]=0x03; //type
 
-  int last_byte_written=4;      // this tracks the current position in buffer
+  int last_byte_written=4;      // this tracks the current position in buffer, 4 because of the first four bytes which go as follows: [size] 40 00 [size-3]
   // SONG TITLE FIELD
   last_byte_written++;
-  DisplayMsg[last_byte_written]=0x10;
+  DisplayMsg[last_byte_written]=0x10;                 // specifying "title" field (middle line, or the only line of text in case of displays such as 1-line GID/BID/TID)
   last_byte_written++;                                                        // we skip DisplayMsg[6], its filled in the end (char count for id 0x10)
-  if(middle_line_buffer_length>1){  // if the upper line data is just a space, don't apply formatting - saves 2 frames of data
+  if(middle_line_buffer_length>1){  // if the middle line data is just a space, don't apply formatting - saves 2 frames of data
     memcpy(DisplayMsg+last_byte_written+1, DIS_leftadjusted, sizeof(DIS_leftadjusted));
     last_byte_written+=sizeof(DIS_leftadjusted);
     DisplayMsg[6]=sizeof(DIS_leftadjusted)/2;
@@ -119,7 +119,7 @@ int processDisplayMessage(char* upper_line_buffer, char* middle_line_buffer, cha
   int album_count_pos=10;
   // ALBUM FIELD
   last_byte_written++;
-  DisplayMsg[last_byte_written]=0x11;
+  DisplayMsg[last_byte_written]=0x11;             // specifying "album" field (upper line)
   last_byte_written++;
   album_count_pos=last_byte_written;
   if(upper_line_buffer_length>=1){  // if the upper line data is just a space, don't apply formatting - saves 2 frames of data
@@ -134,10 +134,10 @@ int processDisplayMessage(char* upper_line_buffer, char* middle_line_buffer, cha
   int artist_count_pos=album_count_pos;
     // ARTIST FIELD
   last_byte_written++;
-  DisplayMsg[last_byte_written]=0x12;
+  DisplayMsg[last_byte_written]=0x12;                             // specifying "artist" field (lower line)
   last_byte_written++;
   artist_count_pos=last_byte_written;
-  if(lower_line_buffer_length>=1){  // if the upper line data is just a space, don't apply formatting - saves 2 frames of data
+  if(lower_line_buffer_length>=1){  // if the lower line data is just a space, don't apply formatting - saves 2 frames of data
     memcpy(DisplayMsg+last_byte_written+1, DIS_smallfont, sizeof(DIS_smallfont));
     last_byte_written+=sizeof(DIS_smallfont);
     DisplayMsg[artist_count_pos]=sizeof(DIS_smallfont)/2;
@@ -147,7 +147,7 @@ int processDisplayMessage(char* upper_line_buffer, char* middle_line_buffer, cha
   DisplayMsg[artist_count_pos]+=lower_line_buffer_length;
 
   if((last_byte_written+1)%7==0){                   // if the amount of bytes were to result in a full packet (ie no unused bytes), add a char to overflow into the next packet
-    DisplayMsg[artist_count_pos]+=1;          // workaround because if the packets are full the display would ignore the message
+    DisplayMsg[artist_count_pos]+=1;          // workaround because if the packets are full the display would ignore the message. This is explained on the EHU32 wiki
     DisplayMsg[last_byte_written+1]=0x00; DisplayMsg[last_byte_written+2]=0x20;
     last_byte_written+=2;
   }

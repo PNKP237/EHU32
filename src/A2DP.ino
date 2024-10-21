@@ -7,26 +7,26 @@ volatile bool md_album_recvd=0, md_artist_recvd=0, md_title_recvd=0;
 
 // updates the buffers
 void avrc_metadata_callback(uint8_t md_type, const uint8_t *data2) {  // fills the song title buffer with data, updates text_lenght with the amount of chars
-  xSemaphoreTake(CAN_MsgSemaphore, portMAX_DELAY);      // take the semaphore as a way to prevent the buffers being accessed elsewhere
+  xSemaphoreTake(BufferSemaphore, portMAX_DELAY);      // take the semaphore as a way to prevent the buffers being accessed elsewhere
   switch(md_type){
     case 0x1: memset(title_buffer, 0, sizeof(title_buffer));
               snprintf(title_buffer, sizeof(title_buffer), "%s", data2);
-              DEBUG_PRINTF("\nA2DP: Received title: \"%s\"", data2);
+              //DEBUG_PRINTF("\nA2DP: Received title: \"%s\"", data2);
               md_title_recvd=1;
               break;
     case 0x2: memset(artist_buffer, 0, sizeof(artist_buffer));
               snprintf(artist_buffer, sizeof(artist_buffer), "%s", data2);
-              DEBUG_PRINTF("\nA2DP: Received artist: \"%s\"", data2);
+              //DEBUG_PRINTF("\nA2DP: Received artist: \"%s\"", data2);
               md_artist_recvd=1;
               break;
     case 0x4: memset(album_buffer, 0, sizeof(album_buffer));
               snprintf(album_buffer, sizeof(album_buffer), "%s", data2);
-              DEBUG_PRINTF("\nA2DP: Received album: \"%s\"", data2);
+              //DEBUG_PRINTF("\nA2DP: Received album: \"%s\"", data2);
               md_album_recvd=1;
               break;
     default:  break;
   }
-  xSemaphoreGive(CAN_MsgSemaphore);
+  xSemaphoreGive(BufferSemaphore);
   if(md_title_recvd && md_artist_recvd && md_album_recvd){
     DIS_forceUpdate=1;                                                      // lets the main loop() know that there's a new song title in the buffer
     md_title_recvd=0;
@@ -71,8 +71,8 @@ void a2dp_init(){
   a2dp_sink.start("EHU32");         // setting up bluetooth audio sink
   a2dp_started=1;
   DEBUG_PRINTLN("A2DP: Started!");
-  disp_mode=-1;                      // set display mode to audio metadata on boot
-  writeTextToDisplay(1, "EHU32 v0.9.2 started!", "Bluetooth on", "Waiting for connection...");
+  disp_mode=0;                      // set display mode to audio metadata on boot
+  writeTextToDisplay(1, "EHU32 v0.9.3", "Bluetooth on", "Waiting for connection...");
 }
 
 // handles events such as connecion/disconnection and audio play/pause
@@ -81,27 +81,23 @@ void A2DP_EventHandler(){
     a2dp_init();
   }
 
-  if(bt_state_changed){                                   // mute external DAC when not playing
+  if(bt_state_changed && disp_mode==0){                                   // mute external DAC when not playing
     if(bt_connected){
       a2dp_sink.set_volume(127);        // workaround to ensure max volume being applied on successful connection
       writeTextToDisplay(1, "Bluetooth connected", "", (char*)a2dp_sink.get_peer_name());
-      if(disp_mode==-1) disp_mode=0;
     } else {
       writeTextToDisplay(1, "Bluetooth disconnected", "", "");
-      if(disp_mode==0) disp_mode=-1;
     }
     bt_state_changed=0;
   }
 
-  if(audio_state_changed && bt_connected){      // mute external DAC when not playing; bt_connected ensures no "Connected, paused" is displayed, seems that the audio_state_changed callback comes late
+  if(audio_state_changed && bt_connected && disp_mode==0){      // mute external DAC when not playing; bt_connected ensures no "Connected, paused" is displayed, seems that the audio_state_changed callback comes late
     if(bt_audio_playing){
       digitalWrite(PCM_MUTE_CTL, HIGH);
       DIS_forceUpdate=1;              // force reprinting of audio metadata when the music is playing
-      if(disp_mode==-1) disp_mode=0;
     } else {
       digitalWrite(PCM_MUTE_CTL, LOW);
       writeTextToDisplay(1, "Bluetooth connected", "", "Paused");
-      if(disp_mode==0) disp_mode=-1;
     }
     audio_state_changed=0;
   }
@@ -109,6 +105,8 @@ void A2DP_EventHandler(){
 
 // ID 0x501 DB3 0x18 indicates imminent shutdown of the radio and display; disconnect from source
 void a2dp_shutdown(){
+  vTaskSuspend(canMessageDecoderTaskHandle);
+  vTaskSuspend(canWatchdogTaskHandle);
   ESP.restart();                            // very crude workaround until I find a better way to deal with reconnection problems after end() is called
   delay(1000);
   a2dp_sink.disconnect();
