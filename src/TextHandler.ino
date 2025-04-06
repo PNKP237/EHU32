@@ -51,13 +51,17 @@ unsigned int utf8_to_utf16(const char* utf8_buffer, char* utf16_buffer){
 
 // converts UTF-8 strings from arguments to real UTF-16, then compiles a full display message with formatting; returns total bytes written as part of message payload
 int processDisplayMessage(char* upper_line_buffer, char* middle_line_buffer, char* lower_line_buffer){
-  static char utf16_middle_line[128], utf16_lower_line[128], utf16_upper_line[128];
+  static char utf16_middle_line[256], utf16_lower_line[256], utf16_upper_line[256];
   int upper_line_buffer_length=0, middle_line_buffer_length=0, lower_line_buffer_length=0;
   if(upper_line_buffer!=nullptr){                                           // converting UTF-8 strings to UTF-16 and calculating string lengths to keep track of processed data
     upper_line_buffer_length=utf8_to_utf16(upper_line_buffer, utf16_upper_line);
   }
   if(middle_line_buffer!=nullptr){
     middle_line_buffer_length=utf8_to_utf16(middle_line_buffer, utf16_middle_line);
+    if(middle_line_buffer_length==0 || (middle_line_buffer_length==1 && utf16_middle_line[1]==0x20)){ // -> empty line (or unsupported chars)
+      snprintf(middle_line_buffer, 8, "Playing");    // if the middle line was to be blank you can at least tell that there's audio being played
+      middle_line_buffer_length=utf8_to_utf16(middle_line_buffer, utf16_middle_line);   // do this once again for the new string
+    }
   }
   if(lower_line_buffer!=nullptr){
     lower_line_buffer_length=utf8_to_utf16(lower_line_buffer, utf16_lower_line);
@@ -152,9 +156,9 @@ int processDisplayMessage(char* upper_line_buffer, char* middle_line_buffer, cha
     last_byte_written+=2;
   }
   if(last_byte_written>254){                      // message size can't be larger than 255 bytes, as the character specifying total payload is an 8 bit value
-    last_byte_written=254;                        // we can send that data though, it will just be ignored, no damage is done
+    //last_byte_written=254;                        // we can send that data though, it will just be ignored, no damage is done
   }
-  DisplayMsg[0]=(last_byte_written+1);         // TOTAL PAYLOAD SIZE based on how many bytes have been written
+  DisplayMsg[0]=((last_byte_written%254)+1);         // TOTAL PAYLOAD SIZE based on how many bytes have been written
   DisplayMsg[3]=DisplayMsg[0]-3;               // payload size written as part of the 4000 command
   return last_byte_written+1;                   // return the total message size
 }

@@ -1,4 +1,5 @@
 #include "driver/twai.h"
+
 void OTAhandleTask(void* pvParameters);
 
 // CAN-related variables
@@ -13,18 +14,22 @@ const twai_message_t  simulate_scroll_up={ .identifier=0x201, .data_length_code=
                       Msg_ACmacro_up={ .identifier=0x208, .data_length_code=3, .data={0x08, 0x16, 0xFF}},
                       Msg_ACmacro_press={ .identifier=0x208, .data_length_code=3, .data={0x01, 0x17, 0x0}},
                       Msg_ACmacro_release={ .identifier=0x208, .data_length_code=3, .data={0x0, 0x17, 0x02}},
-                      Msg_MeasurementRequestDIS={ .identifier=0x246, .data_length_code=8, .data={0x07, 0xAA, 0x03, 0x01, 0x0B, 0x0B, 0x0B, 0x0B}},
-                      Msg_MeasurementRequestECC={ .identifier=0x248, .data_length_code=7, .data={0x06, 0xAA, 0x01, 0x01, 0x07, 0x10, 0x11}};
+                      Msg_MeasurementRequestDIS={ .identifier=0x246, .data_length_code=7, .data={0x06, 0xAA, 0x01, 0x01, 0x0B, 0x0E, 0x13}},
+                      Msg_MeasurementRequestECC={ .identifier=0x248, .data_length_code=7, .data={0x06, 0xAA, 0x01, 0x01, 0x07, 0x10, 0x11}},
+                      Msg_VoltageRequestDIS={ .identifier=0x246, .data_length_code=5, .data={0x04, 0xAA, 0x01, 0x01, 0x13}},
+                      Msg_CoolantRequestDIS={ .identifier=0x246, .data_length_code=5, .data={0x04, 0xAA, 0x01, 0x01, 0x0B}},
+                      Msg_CoolantRequestECC={ .identifier=0x248, .data_length_code=5, .data={0x04, 0xAA, 0x01, 0x01, 0x10}};
 
 // can't initialize the values of the union inside the twai_message_t type struct, which is why it's defined here, then the transmit task sets the .ss flag
-twai_message_t Msg_PreventDisplayUpdate={ .identifier=0x2C1, .data_length_code=8, .data={0x30, 0x0, 0x7F, 0, 0, 0, 0, 0}};
+twai_message_t  Msg_PreventDisplayUpdate={ .identifier=0x2C1, .data_length_code=8, .data={0x30, 0x0, 0x7F, 0, 0, 0, 0, 0}},
+                Msg_AbortTransmission={ .identifier=0x2C1, .data_length_code=8, .data={0x32, 0x0, 0, 0, 0, 0, 0, 0}};     // can have unforseen consequences such as resets! use as last resort
 
 // initializing CAN communication
 void twai_init(){
   twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(GPIO_NUM_5, GPIO_NUM_4, TWAI_MODE_NORMAL);         // CAN bus set up
   g_config.rx_queue_len=40;
   g_config.tx_queue_len=5;
-  g_config.intr_flags=(ESP_INTR_FLAG_LEVEL1 & ESP_INTR_FLAG_IRAM);
+  g_config.intr_flags=(ESP_INTR_FLAG_NMI & ESP_INTR_FLAG_IRAM);   // run the TWAI driver at the highest possible priority
   twai_timing_config_t t_config =  {.brp = 42, .tseg_1 = 15, .tseg_2 = 4, .sjw = 3, .triple_sampling = false};    // set CAN prescalers and time quanta for 95kbit
   twai_filter_config_t f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
     DEBUG_PRINT("\nCAN/TWAI SETUP => "); 
@@ -48,40 +53,72 @@ void twai_init(){
 
 // this task only reads CAN messages, filters them and enqueues them to be decoded ansynchronously. 0x6C1 is a special case, as the radio message has to be blocked ASAP
 void canReceiveTask(void *pvParameters){
-  static twai_message_t Recvd_CAN_MSG;
+  static twai_message_t Recvd_CAN_MSG, DummyFirstFrame={ .identifier=0x6C1, .data_length_code=8, .data={0x10, 0xA7, 0x50, 0x00, 0xA4, 0x03, 0x10, 0x13}};
+  uint32_t alerts_FlowCtl;        // separate buffer for the flow control alerts, prevents race conditions with the other task which also uses alerts
+  bool allowDisplayBlocking=0, firstAckReceived=0, overwriteAttemped=0;
+  uint32_t flowCtlUsed=(displayMsgIdentifier-0x400);  // set from memory, if using 0x6C0 flow control will be 0x2C0 etc.
   Msg_PreventDisplayUpdate.extd=0; Msg_PreventDisplayUpdate.ss=1; Msg_PreventDisplayUpdate.self=0; Msg_PreventDisplayUpdate.rtr=0;
+  Msg_AbortTransmission.extd=0; Msg_AbortTransmission.ss=1; Msg_AbortTransmission.self=0; Msg_AbortTransmission.rtr=0;
   while(1){
+    allowDisplayBlocking=checkFlag(CAN_allowAutoRefresh);   // checking earlier improves performance, there's very little time to send that message, otherwise we get error frames (because of the same ID)
     if(twai_receive(&Recvd_CAN_MSG, portMAX_DELAY)==ESP_OK){
       switch(Recvd_CAN_MSG.identifier){
         case 0x6C1: {
           if(disp_mode!=-1){            // don't bother checking the data if there's no need to update the display
-            if(Recvd_CAN_MSG.data[0]==0x10 && (Recvd_CAN_MSG.data[2]==0x40 || Recvd_CAN_MSG.data[2]==0xC0) && Recvd_CAN_MSG.data[5]==0x03 && (disp_mode!=0 || CAN_allowDisplay)){       // another task processes the data since we can't do that here
-              DEBUG_PRINTLN("CAN: Received display update, trying to block");
+            if(Recvd_CAN_MSG.data[0]==0x10 && (Recvd_CAN_MSG.data[2]==0x40 || Recvd_CAN_MSG.data[2]==0xC0) && Recvd_CAN_MSG.data[5]==0x03 && (disp_mode!=0 || allowDisplayBlocking)){       // another task processes the data since we can't do that here
               twai_transmit(&Msg_PreventDisplayUpdate, pdMS_TO_TICKS(30));  // radio blocking msg has to be transmitted ASAP, which is why we skip the queue
-              twai_read_alerts(&alerts_triggered, pdMS_TO_TICKS(10));    // read stats
-              if(alerts_triggered & TWAI_ALERT_TX_SUCCESS){
-                CAN_flowCtlFail=0;
+              DEBUG_PRINTLN("CAN: Received display update, trying to block");
+              twai_read_alerts(&alerts_FlowCtl, pdMS_TO_TICKS(10));    // read stats to a local alert buffer
+              if(alerts_FlowCtl & TWAI_ALERT_TX_SUCCESS){
+                clearFlag(CAN_flowCtlFail);
                 DEBUG_PRINTLN("CAN: Blocked successfully");
               } else {
-                CAN_flowCtlFail=1;
+                setFlag(CAN_flowCtlFail);                     // lets the display task know that we failed blocking the display TX and as such the display task shall wait
                 DEBUG_PRINTLN("CAN: Blocking failed!");
               }
-              if(disp_mode==0 || disp_mode==2) vTaskResume(canDisplayTaskHandle); // only retransmit the msg for audio metadata mode and single line coolant, since these don't update frequently
+              overwriteAttemped=1;    // if the display message retransmission was intended to mask the radio's message
+              if(eTaskGetState(canDisplayTaskHandle)==eRunning){
+                if(Recvd_CAN_MSG.data[0]==0x10) setFlag(CAN_abortMultiPacket);    // let the transmission task know that the radio has transmissed a new first frame -> any ongoing transmission is no longer valid
+              }
+              vTaskResume(canDisplayTaskHandle); // only retransmit the msg for audio metadata mode and single line coolant, since these don't update frequently
             }
           }
         }
         case 0x201:
         case 0x206:
         case 0x208:
-        case 0x2C1:
         case 0x501:
         case 0x546:
         case 0x548:
         case 0x4E8:
         case 0x6C8:
-          xQueueSend(canRxQueue, &Recvd_CAN_MSG, portMAX_DELAY);
+          xQueueSend(canRxQueue, &Recvd_CAN_MSG, portMAX_DELAY);      // queue the message contents to be read at a later time
           break;
+        case 0x2C1:{        // this attempts to invalidate the radio's display call with identifier 0x6C1
+          if(flowCtlUsed==0x2C1){       // old/backup logic for radio messages on 0x6C1
+            if(firstAckReceived || !overwriteAttemped){          // disregard the first flow control frame meant for the radio unit ONLY if it was a result of retransmission to mask the radio's display update
+              waitForFlag(CAN_MessageReady, pdMS_TO_TICKS(20));   // this is blocking a lot of stuff so gotta find a sweet spot for how long to block for
+              if(Recvd_CAN_MSG.data[0]==0x30){
+                xTaskNotifyGive(canDisplayTaskHandle);          // let the display update task know that the data is ready to be transmitted
+                xQueueSend(canRxQueue, &Recvd_CAN_MSG, portMAX_DELAY);
+                if(firstAckReceived) firstAckReceived=0;             // reset it to be ready for the next one
+                if(overwriteAttemped) overwriteAttemped=0;
+              }
+            } else {
+              firstAckReceived=1;   // flow control not meant for EHU32, set the switch and wait for the second one
+            }
+          }
+          if(overwriteAttemped && flowCtlUsed!=0x2C1){
+            twai_transmit(&DummyFirstFrame, pdMS_TO_TICKS(100));  // transmit a dummy frame ASAP to invalidate previous display call
+            DEBUG_PRINTLN("CAN: Attempting to invalidate radio's screen call...");
+            overwriteAttemped=0;
+          }
+          break;
+        }
         default: break;
+      }
+      if(Recvd_CAN_MSG.identifier==flowCtlUsed && Recvd_CAN_MSG.identifier!=0x2C1 && Recvd_CAN_MSG.data[0]==0x30){ // can't be a switch case because it might be dynamic
+        xTaskNotifyGive(canDisplayTaskHandle);
       }
     }
   }
@@ -90,74 +127,81 @@ void canReceiveTask(void *pvParameters){
 // this task processes filtered CAN frames read from canRxQueue
 void canProcessTask(void *pvParameters){
   static twai_message_t RxMsg;
-  uint8_t payload_size=0, payload_bytes_queued=0, payload_type=0;
+  bool badVoltage_VectraC_bypass=0;
   while(1){
     xQueueReceive(canRxQueue, &RxMsg, portMAX_DELAY);     // receives data from the internal queue
     switch(RxMsg.identifier){
       case 0x201: {                                         // radio button decoder
-        if(RxMsg.data[0]==0x01 && RxMsg.data[2]>=10){
-          switch(RxMsg.data[1]){
-            case 0x30:  canActionEhuButton0();      // CD30 has no '0' button!
-                        break;
-            case 0x31:  canActionEhuButton1();
-                        break;
-            case 0x32:  canActionEhuButton2();
-                        break;
-            case 0x33:  canActionEhuButton3();
-                        break;
-            case 0x34:  canActionEhuButton4();
-                        break;
-            case 0x35:  canActionEhuButton5();
-                        break;
-            case 0x36:  canActionEhuButton6();
-                        break;
-            case 0x37:  canActionEhuButton7();
-                        break;
-            case 0x38:  canActionEhuButton8();
-                        break;
-            case 0x39:  canActionEhuButton9();
-                        break;
-            default: break;
-          }
+        bool btn_state=RxMsg.data[0];
+        unsigned int btn_ms_held=(RxMsg.data[2]*100);
+        switch(RxMsg.data[1]){
+          case 0x30:  canActionEhuButton0(btn_state, btn_ms_held);      // CD30 has no '0' button!
+                      break;
+          case 0x31:  canActionEhuButton1(btn_state, btn_ms_held);
+                      break;
+          case 0x32:  canActionEhuButton2(btn_state, btn_ms_held);
+                      break;
+          case 0x33:  canActionEhuButton3(btn_state, btn_ms_held);
+                      break;
+          case 0x34:  canActionEhuButton4(btn_state, btn_ms_held);
+                      break;
+          case 0x35:  canActionEhuButton5(btn_state, btn_ms_held);
+                      break;
+          case 0x36:  canActionEhuButton6(btn_state, btn_ms_held);
+                      break;
+          case 0x37:  canActionEhuButton7(btn_state, btn_ms_held);
+                      break;
+          case 0x38:  canActionEhuButton8(btn_state, btn_ms_held);
+                      break;
+          case 0x39:  canActionEhuButton9(btn_state, btn_ms_held);
+                      break;
+          default: break;
         }
         break;
       }
       case 0x206: {                                  // decodes steering wheel buttons
-        if(bt_connected && RxMsg.data[0]==0x0 && CAN_allowDisplay){                     // makes sure "Aux" is displayed, otherwise forward/next buttons will have no effect
+        if(checkFlag(bt_connected) && RxMsg.data[0]==0x0 && checkFlag(CAN_allowAutoRefresh)){                     // makes sure "Aux" is displayed, otherwise forward/next buttons will have no effect
           switch(RxMsg.data[1]){
-            case 0x81:  if(bt_audio_playing){                 // upper left button (box with waves)
-                          a2dp_sink.pause(); 
-                        } else {
-                          a2dp_sink.play();
-                        }
-                        break;
-            case 0x91:  a2dp_sink.next();                     // upper right button (arrow up)
-                        break;
-            case 0x92:  a2dp_sink.previous();                 // lower right button (arrow down)
-                        break;
+            case 0x81:{
+              if(!vehicle_UHP_present){   // only enable the play/pause functionality for vehicles without UHP otherwise it could conflict with the factory bluetooth hands-free
+                if(checkFlag(bt_audio_playing)){                 // upper left button (box with waves)
+                    a2dp_sink.pause(); 
+                  } else {
+                    a2dp_sink.play();
+                  }
+                }
+              break;
+            }
+            case 0x91:{
+              a2dp_sink.next();                     // upper right button (arrow up)
+              break;
+            }
+            case 0x92:{
+              a2dp_sink.previous();                 // lower right button (arrow down)
+              break;
+            }
             default:    break;
           }          
         }
         break;
       }
       case 0x208: {                               // AC panel button event
-        if((RxMsg.data[0]==0x0) && (RxMsg.data[1]==0x17) && (RxMsg.data[2]<0x01)){          // FIXME!
+        if(RxMsg.data[0]==0x0 && RxMsg.data[1]==0x17 && RxMsg.data[2]<0x03){          // FIXME!
           vTaskResume(canAirConMacroTaskHandle);   // start AC macro
         }
         break;
       }
       case 0x2C1: {
-        if(CAN_MessageReady) xTaskNotifyGive(canDisplayTaskHandle);  // let the display update task know that the data is ready to be transmitted
-        canISO_frameSpacing=RxMsg.data[2];            // dynamically adjust ISO 15765-2 frame spacing delay
+        if(RxMsg.data[2]!=0 && canISO_frameSpacing!=RxMsg.data[2]) canISO_frameSpacing=RxMsg.data[2];            // adjust ISO 15765-2 frame spacing delay only if the receiving node calls for it
         break;
       }
       case 0x501: {                                         // CD30MP3 goes to sleep -> disable bluetooth connectivity
-        if(a2dp_started && RxMsg.data[3]==0x18){
+        if(checkFlag(a2dp_started) && RxMsg.data[3]==0x18){
           a2dp_shutdown();
         }
         break;
       }
-      case 0x546: {                             // display measurement blocks (used as a fallback)
+      case 0x546: {                             // display measurement blocks (used as a fallback or for )
           if(disp_mode==1 || disp_mode==2){
             xSemaphoreTake(BufferSemaphore, portMAX_DELAY);
             DEBUG_PRINT("CAN: Got measurements from DIS: ");
@@ -165,21 +209,34 @@ void canProcessTask(void *pvParameters){
               case 0x0B:  {             // 0x0B references coolant temps
                 DEBUG_PRINT("coolant\n");
                 int CAN_data_coolant=RxMsg.data[5]-40;
-                snprintf(voltage_buffer, sizeof(voltage_buffer), "No additional data available");
+                snprintf(voltage_buffer, sizeof(voltage_buffer), " ");
                 snprintf(coolant_buffer, sizeof(coolant_buffer), "Coolant temp: %d%c%cC   ", CAN_data_coolant, 0xC2, 0xB0);
-                //snprintf(speed_buffer, sizeof(speed_buffer), "ECC not present"); // -> speed received as part of the 0x4E8 msg
-                CAN_coolant_recvd=1;
-                #ifdef DEBUG
-                CAN_speed_recvd=1;      // a workaround for my desktop setup (can't sniff the speed from 0x4E8)
-                #endif
+                setFlag(CAN_coolant_recvd);
+                break;
+              }
+              case 0x0E: {
+                DEBUG_PRINT("speed\n");
+                int CAN_data_speed=(RxMsg.data[2]<<8 | RxMsg.data[3]);
+                CAN_data_speed/=128;
+                snprintf(speed_buffer, sizeof(speed_buffer), "%d km/h    ", CAN_data_speed);
+                setFlag(CAN_speed_recvd);
+                break;
+              }
+              case 0x13: {    // reading voltage from display, research courtesy of @xymetox
+                DEBUG_PRINT("battery voltage\n");
+                float CAN_data_voltage=RxMsg.data[6];
+                CAN_data_voltage/=10;
+                snprintf(voltage_buffer, sizeof(voltage_buffer), "Voltage: %.1f V  ", CAN_data_voltage);
+                setFlag(CAN_voltage_recvd);
                 break;
               }
               default:    break;
             }
-            if(CAN_coolant_recvd && CAN_speed_recvd){
-              CAN_speed_recvd=0;
-              CAN_coolant_recvd=0;
-              CAN_new_dataSet_recvd=1;
+            if(checkFlag(CAN_voltage_recvd) && checkFlag(CAN_coolant_recvd) && checkFlag(CAN_speed_recvd)){
+              clearFlag(CAN_voltage_recvd);
+              clearFlag(CAN_coolant_recvd);
+              clearFlag(CAN_speed_recvd);
+              setFlag(CAN_new_dataSet_recvd);
             }
             xSemaphoreGive(BufferSemaphore);  // let the message processing continue
           }
@@ -189,88 +246,69 @@ void canProcessTask(void *pvParameters){
           if(disp_mode==1 || disp_mode==2) xSemaphoreTake(BufferSemaphore, portMAX_DELAY);    // if we're in body data mode, take the semaphore to prevent the buffer being modified while the display message is being compiled
           DEBUG_PRINT("CAN: Got measurements from ECC: ");
           switch(RxMsg.data[0]){              // measurement block ID -> update data which the message is referencing
-            case 0x07:  {             // 0x10 references battery voltage
-              CAN_data_voltage=RxMsg.data[2];
-              CAN_data_voltage/=10;
-              snprintf(voltage_buffer, sizeof(voltage_buffer), "Voltage: %.1f V  ", CAN_data_voltage);
-              CAN_voltage_recvd=1;
-              DEBUG_PRINT("battery voltage\n");
+            case 0x07:  {             // 0x07 references battery voltage
+              if(!badVoltage_VectraC_bypass){
+                float CAN_data_voltage=RxMsg.data[2];
+                CAN_data_voltage/=10;
+                if(CAN_data_voltage>9 && CAN_data_voltage<16){
+                  snprintf(voltage_buffer, sizeof(voltage_buffer), "Voltage: %.1f V  ", CAN_data_voltage);
+                } else {            // we get erroneous readings, as such we'll switch to reading from display on the next measurement request
+                  badVoltage_VectraC_bypass=1;
+                }
+                setFlag(CAN_voltage_recvd);
+                DEBUG_PRINT("battery voltage\n");
+              } else {
+                xQueueSend(canTxQueue, &Msg_VoltageRequestDIS, pdMS_TO_TICKS(100));   // request just the voltage from Vectra's display because ECC voltage reading is erratic compared to Astra/Zafira
+              }
               break;
             }
             case 0x10:  {             // 0x10 references coolant temps
               unsigned short raw_coolant=(RxMsg.data[3]<<8 | RxMsg.data[4]);
-              CAN_data_coolant=raw_coolant;
+              float CAN_data_coolant=raw_coolant;
               CAN_data_coolant/=10;
               snprintf(coolant_buffer, sizeof(coolant_buffer), "Coolant temp: %.1f%c%cC   ", CAN_data_coolant, 0xC2, 0xB0);
-              CAN_coolant_recvd=1;
+              setFlag(CAN_coolant_recvd);
               DEBUG_PRINT("coolant\n");
               break;
             }
             case 0x11:  {             // 0x11 references RPMs and speed
-              CAN_data_rpm=(RxMsg.data[1]<<8 | RxMsg.data[2]);
-              CAN_data_speed=RxMsg.data[4];
+              int CAN_data_rpm=(RxMsg.data[1]<<8 | RxMsg.data[2]);
+              int CAN_data_speed=RxMsg.data[4];
               snprintf(speed_buffer, sizeof(speed_buffer), "%d km/h %d RPM     ", CAN_data_speed, CAN_data_rpm);
-              CAN_speed_recvd=1;
+              setFlag(CAN_speed_recvd);
               DEBUG_PRINT("speed and RPMs\n");
               break; 
             }
             default:    break;
           }
-          if(CAN_voltage_recvd && CAN_coolant_recvd && CAN_speed_recvd){
-            CAN_voltage_recvd=0;
-            CAN_coolant_recvd=0;
-            CAN_speed_recvd=0;
-            CAN_new_dataSet_recvd=1;
+          if(checkFlag(CAN_voltage_recvd) && checkFlag(CAN_coolant_recvd) && checkFlag(CAN_speed_recvd)){
+            clearFlag(CAN_voltage_recvd);
+            clearFlag(CAN_coolant_recvd);
+            clearFlag(CAN_speed_recvd);
+            setFlag(CAN_new_dataSet_recvd);
           }
           if(disp_mode==1 || disp_mode==2) xSemaphoreGive(BufferSemaphore);  // let the message processing continue
         break;
       }
-      case 0x4E8: {                               // this provides speed and RPMs right from the bus, only for 3-line measurement mode (disp_mode 1) IF there's no ECC module detected
-        if((disp_mode==1) && !ECC_present){
-          if(disp_mode==1) xSemaphoreTake(BufferSemaphore, portMAX_DELAY);
-          CAN_data_rpm=(RxMsg.data[2]<<8 | RxMsg.data[3]);
-          CAN_data_rpm/=4;                                // realized this thanks to testing done by @KingSilverHaze 
-          if(RxMsg.data[6]=0x01){     // vehicle is standing still -> bytes 4 and 5 not updated, assume 0 km/h
-            CAN_data_speed=0;           // when not moving, the speed value will not reflect 0 km/h
-          } else {
-            CAN_data_speed=(RxMsg.data[4]<<8 | RxMsg.data[5]);        // speed is a 16-bit integer multiplied by 128
-            CAN_data_speed/=128;
-          }
-          snprintf(speed_buffer, sizeof(speed_buffer), "%d km/h %d RPM     ", CAN_data_speed, CAN_data_rpm);
-          CAN_speed_recvd=1;
-          if(disp_mode==1) xSemaphoreGive(BufferSemaphore);  // let the message processing continue
-        }
-        break;
-      }
       case 0x6C1: {                                         // radio requests a display update
-        if(!a2dp_started){
-          ehu_started=1;                    // start the bluetooth A2DP service after first radio display call
+        if(!checkFlag(a2dp_started)){
+          setFlag(ehu_started);                    // start the bluetooth A2DP service after first radio display call
           disp_mode=0;
-        } else if(a2dp_started && !ehu_started){
+          vTaskResume(canMessageDecoderTaskHandle);       // begin decoding data from the display
+        } else if(checkFlag(a2dp_started) && !checkFlag(ehu_started)){
           a2dp_sink.reconnect();
-          ehu_started=1;
+          setFlag(ehu_started);
         }
         if(disp_mode==0){      // if not a consecutive frame, then we queue that data for decoding by another task
-          if(RxMsg.data[0]==0x10 && (RxMsg.data[2]==0x40 || RxMsg.data[2]==0xC0)){
-            payload_size=RxMsg.data[1]-6;
-            payload_bytes_queued=0;         // reset the counter
-            payload_type=RxMsg.data[5];     // this is a hack for CD70/DVD90, because they utilize an audio menu, they send messages "under the hood" which don't contain "Aux"
-            if(payload_type==0x03) xQueueSend(canDispQueue, &payload_size, portMAX_DELAY);    // queue payload size decreased by 6 since we don't count the 6 bytes in first frame
-          } else {
-            for(int i=1; i<=7 && payload_bytes_queued<payload_size; i++){
-              if(payload_type==0x03) xQueueSend(canDispQueue, &RxMsg.data[i], portMAX_DELAY);    // queue raw payload data, skipping consecutive frame index data
-              payload_bytes_queued++;
-            }
+          for(int i=1; i<=7; i++){
+            xQueueSend(canDispQueue, &RxMsg.data[i], portMAX_DELAY);    // send a continuous byte stream
           }
-          if(payload_type==0x03) vTaskResume(canMessageDecoderTaskHandle);           // resuming the task if it is already running is safe
         }
         xTaskNotifyGive(canWatchdogTaskHandle);    // reset the watchdog
         break;
       }
-      case 0x6C8: {           // if any ECC module message is received, assume ECC is available to request measurement data from
-        if(!ECC_present){
-          ECC_present=1;
-        }
+      case 0x6C8: {
+        if(!checkFlag(ECC_present)) setFlag(ECC_present);            // adjust ISO 15765-2 frame spacing delay only if the receiving node calls for it
         break;
       }
       default:    break;
@@ -281,6 +319,7 @@ void canProcessTask(void *pvParameters){
 // this task receives CAN messages from canTxQueue and transmits them asynchronously
 void canTransmitTask(void *pvParameters){
   static twai_message_t TxMessage;
+  int alert_result;
   while(1){
     xQueueReceive(canTxQueue, &TxMessage, portMAX_DELAY);
     TxMessage.extd=0;
@@ -288,25 +327,26 @@ void canTransmitTask(void *pvParameters){
     TxMessage.ss=0;
     TxMessage.self=0;
     //DEBUG_PRINTF("%03X # %02X %02X %02X %02X %02X %02X %02X %02X", TxMessage.identifier, TxMessage.data[0], TxMessage.data[1], TxMessage.data[2], TxMessage.data[3], TxMessage.data[4], TxMessage.data[5], TxMessage.data[6], TxMessage.data[7]);
-    if(twai_transmit(&TxMessage, pdMS_TO_TICKS(50)) == ESP_OK) {
+    if(twai_transmit(&TxMessage, pdMS_TO_TICKS(50))==ESP_OK) {
       //DEBUG_PRINT(" Q:OK ");
     } else {
       //DEBUG_PRINT("Q:FAIL ");
-      CAN_prevTxFail=1;
+      setFlag(CAN_prevTxFail);
+      if(TxMessage.identifier==displayMsgIdentifier && (TxMessage.data[0]==0x10 || TxMessage.data[0]==0x11)) setFlag(CAN_abortMultiPacket);
     }
-    int alert_result=twai_read_alerts(&alerts_triggered, pdMS_TO_TICKS(10));    // read stats
+    alert_result=twai_read_alerts(&alerts_triggered, pdMS_TO_TICKS(10));    // read stats
     if(alert_result==ESP_OK){
         //DEBUG_PRINT("AR:OK ");
       if(alerts_triggered & TWAI_ALERT_TX_SUCCESS){
+        if(TxMessage.identifier==displayMsgIdentifier && (TxMessage.data[0]==0x10 || TxMessage.data[0]==0x11)) setFlag(CAN_MessageReady); // let the display task know that the first frame has been transmitted and we're expecting flow control (0x2C1) frame now
         //DEBUG_PRINTLN("TX:OK ");
-        if(TxMessage.identifier==0x6C1 && TxMessage.data[0]==0x10){
-          CAN_MessageReady=1;
-        }
       } else {
         DEBUG_PRINTLN("TX:FAIL ");
+        setFlag(CAN_prevTxFail);
       }
     } else {
-        CAN_prevTxFail=1;
+        setFlag(CAN_prevTxFail);
+        if(TxMessage.identifier==displayMsgIdentifier && (TxMessage.data[0]==0x10 || TxMessage.data[0]==0x11)) setFlag(CAN_abortMultiPacket);
         DEBUG_PRINT("AR:FAIL:");
       if(alert_result==ESP_ERR_INVALID_ARG){
         DEBUG_PRINTLN("INV_ARG");
@@ -323,6 +363,7 @@ void canTransmitTask(void *pvParameters){
 
 #ifdef DEBUG
 char* split_text[3];
+char usage_stats[512];
 
 bool checkMutexState(){
   if(xSemaphoreTake(CAN_MsgSemaphore, pdMS_TO_TICKS(1))==pdTRUE){
@@ -358,9 +399,9 @@ void CANsimTask(void *pvParameters){
                   break;
         case 'd': {
           Serial.print("CURRENT FLAGS CAN: ");
-          Serial.printf("CAN_MessageReady=%d CAN_prevTxFail=%d, DIS_forceUpdate=%d, ECC_present=%d, ehu_started=%d \n", CAN_MessageReady, CAN_prevTxFail, DIS_forceUpdate, ECC_present, ehu_started);
+          Serial.printf("CAN_MessageReady=%d CAN_prevTxFail=%d, DIS_forceUpdate=%d, ECC_present=%d, ehu_started=%d \n", checkFlag(CAN_MessageReady), checkFlag(CAN_prevTxFail), checkFlag(DIS_forceUpdate), checkFlag(ECC_present), checkFlag(ehu_started));
           Serial.print("CURRENT FLAGS BODY: ");
-          Serial.printf("CAN_voltage_recvd=%d CAN_coolant_recvd=%d, CAN_speed_recvd=%d, CAN_new_dataSet_recvd=%d \n", CAN_voltage_recvd, CAN_coolant_recvd, CAN_speed_recvd, CAN_new_dataSet_recvd);
+          Serial.printf("CAN_voltage_recvd=%d CAN_coolant_recvd=%d, CAN_speed_recvd=%d, CAN_new_dataSet_recvd=%d \n", checkFlag(CAN_voltage_recvd), checkFlag(CAN_coolant_recvd), checkFlag(CAN_speed_recvd), checkFlag(CAN_new_dataSet_recvd));
           Serial.print("TIME AND STUFF: ");
           Serial.printf("last_millis_req=%lu last_millis_disp=%lu, millis=%lu \n", last_millis_req, last_millis_disp, millis());
           Serial.printf("CanMsgSemaphore state: %d \n", checkMutexState());
@@ -374,6 +415,10 @@ void CANsimTask(void *pvParameters){
           serialStringSplitter(inputBuffer);
           disp_mode=0;
           writeTextToDisplay(1, split_text[0], split_text[1], split_text[2]);
+          break;
+        }
+        case 'C': {
+          prefs_clear();
           break;
         }
         default: break;
@@ -401,31 +446,43 @@ void serialStringSplitter(char* input){
 
 // this task implements ISO 15765-2 (multi-packet transmission over CAN frames) in a crude, but hopefully robust way in order to send frames to the display
 void canDisplayTask(void *pvParameters){
+  static twai_message_t MsgToTx;
+  MsgToTx.identifier=displayMsgIdentifier;
+  MsgToTx.data_length_code=8;
+  uint32_t notifResult;
+  bool retryTx=0;
   while(1){
+    retryTx=0;
     if(xSemaphoreTake(CAN_MsgSemaphore, portMAX_DELAY)==pdTRUE){          // if the buffer is being accessed, block indefinitely
-      if(CAN_flowCtlFail){                 // failed transmitting flow control before the display resulting in an error frame, wait for a bit before sending it again, skip queue
-        xQueueSend(canTxQueue, &Msg_PreventDisplayUpdate, portMAX_DELAY); // since we missed the first chance to block, we well do this once again through the usual queue as a normal packet
-        CAN_flowCtlFail=0;                                                // Tx task will set the single shot flag to 0, since it'd be highly unlikely to run into another 0x2C1 frame
-        vTaskDelay(pdMS_TO_TICKS(2));
+      if(checkFlag(CAN_flowCtlFail)){
+        vTaskDelay(pdMS_TO_TICKS(300));   // since we failed at flow control, wait for the radio to finish its business
       }
-      vTaskDelay(pdMS_TO_TICKS(5));     // these delays are incredibly important for the proper operation of the transmission task
-      sendMultiPacket();                    // send multi packet is blocking
-      vTaskDelay(pdMS_TO_TICKS(2));
-      if(CAN_prevTxFail){      // if sendMultiPacket failed, resend
-        sendMultiPacket();
-      }
-      //xEventGroupWaitBits(CAN_Events, CAN_MessageReady, pdFALSE, pdFALSE, portMAX_DELAY);  // this waits until CAN_MessageReady is set by the transmit function (only in case of a successful TX)
-      if(CAN_MessageReady && !CAN_prevTxFail){  // possibly not needed anymore? nope, still needed until I'm competent enough to implement EventGroups       
-        DEBUG_PRINTLN("CAN: Now waiting for 2C1...");
-        xTaskNotifyWait(0, 0, NULL, pdMS_TO_TICKS(100));
-        sendMultiPacketData();
+      clearFlag(CAN_prevTxFail);
+      clearFlag(CAN_abortMultiPacket);      // new transmission, we clear these
+      memcpy(MsgToTx.data, CAN_MsgArray[0], 8);
+      xQueueSend(canTxQueue, &MsgToTx, portMAX_DELAY);
+      DEBUG_PRINTLN("CAN: Now waiting for flow control frame...");
+      if(xTaskNotifyWait(0, 0, NULL, portMAX_DELAY)==pdPASS){            // blocking execution until flow control from display arrives
+        DEBUG_PRINTLN("CAN: Got flow control! Sending consecutive frames...");
+        for(int i=1;i<64 && (CAN_MsgArray[i][0]!=0x00 && !checkFlag(CAN_prevTxFail) && !checkFlag(CAN_abortMultiPacket));i++){                 // this loop will stop sending data once the next packet doesn't contain a label
+          memcpy(MsgToTx.data, CAN_MsgArray[i], 8);
+          xQueueSend(canTxQueue, &MsgToTx, portMAX_DELAY);
+          vTaskDelay(pdMS_TO_TICKS(canISO_frameSpacing));         // receiving node can request a variable frame spacing time, we take it into account here, so far I've seen BID request 2ms while GID/CID request 0ms (no delay)
+        }
+        clearFlag(CAN_MessageReady);  // clear this as fast as possible once we're done sending
+        if(checkFlag(CAN_prevTxFail) || checkFlag(CAN_abortMultiPacket)){
+          retryTx=1;                          // "queue up" to restart this task since something went wrong
+          clearFlag(CAN_prevTxFail);
+        }
         xTaskNotifyStateClear(NULL);
-      } else {
-        vTaskDelay(10);
+      } else {                      // fail 
+        DEBUG_PRINTLN("CAN: Flow control frame has not been received in time, aborting");
+        clearFlag(CAN_MessageReady);
+        retryTx=1;
       }
       xSemaphoreGive(CAN_MsgSemaphore);           // release the semaphore
     }
-    vTaskSuspend(NULL);   // have the display task stop itself
+    if(!retryTx) vTaskSuspend(NULL);   // have the display task stop itself only if there is no need to retransmit, else run once again
   }
 }
 
@@ -452,50 +509,70 @@ void canAirConMacroTask(void *pvParameters){
 
 // this task monitors raw data contained within messages sent by the radio and looks for Aux string being printed to the display; rejects "Aux" in views such as "Audio Source" screen (CD70/DVD90)
 void canMessageDecoder(void *pvParameters){
-  uint8_t rxDisplay, payload_size=0, payload_bytes_received=0;
-  const uint8_t AuxPattern[7]={0x6D, 0x00, 0x41, 0x00, 0x75, 0x00, 0x78};     // snippet of data to look for, allows for robust detection of "Aux" on all kinds of headunits
+  uint8_t rxDisplay;
+  const uint8_t AuxPattern[8]={0x00, 0x6D, 0x00, 0x41, 0x00, 0x75, 0x00, 0x78};     // snippet of data to look for, allows for robust detection of "Aux" on all kinds of headunits
   int patternIndex=0;
   bool patternFound=0;
+  int currentIndex[6] = {0};
+  const char patterns[6][17] = {           // this is a crutch for CD30/CD40 "SOUND" menu, required to be able to adjust fader/balance/bass/treble, otherwise EHU32 will block it from showing up
+    {0, 0x6D, 0, 0x41, 0, 0x75, 0, 0x78},                // formatted Aux (left or center aligned). Weird formatting because the data is in UTF-16
+    {0x46, 0, 0x61, 0, 0x64, 0, 0x65, 0, 0x72},                                      // Fader
+    {0x42, 0, 0x61, 0, 0x6c, 0, 0x61, 0, 0x6e, 0, 0x63, 0, 0x65},                    // Balance
+    {0x42, 0, 0x61, 0, 0x73, 0, 0x73},                                               // Bass
+    {0x54, 0, 0x72, 0, 0x65, 0, 0x62, 0, 0x6c, 0, 0x65},                             // Treble
+    {0x53, 0, 0x6f, 0, 0x75, 0, 0x6e, 0, 0x64, 0, 0x20, 0, 0x4f, 0, 0x66, 0, 0x66}   // Sound Off
+  };
+  const char patternLengths[6] = {8, 9, 13, 7, 11, 17};
   while(1){
-    xQueueReceive(canDispQueue, &payload_size, portMAX_DELAY);    // after starting from suspended state the first byte should be the payload size
-    for(payload_bytes_received=0; payload_bytes_received<payload_size && !patternFound; payload_bytes_received++){   // read bytes as long as there is payload data OR "Aux" has been found
-      xQueueReceive(canDispQueue, &rxDisplay, portMAX_DELAY);
-      if(rxDisplay==AuxPattern[patternIndex]){
-        patternIndex++;
-        if(patternIndex==7){
-          patternIndex=0;
-          patternFound=1;
-          DEBUG_PRINTLN("CAN: Found Aux string!");
-        }
-      } else {                  // start looking for aux once again
-        patternIndex=0;
+    if(xQueueReceive(canDispQueue, &rxDisplay, portMAX_DELAY)==pdTRUE){         // wait for new data queued by the ProcessTask
+      for(int i=0;i<6; i++){
+          if(rxDisplay==patterns[i][currentIndex[i]]){
+            currentIndex[i]++;
+            if(currentIndex[i]==patternLengths[i]){
+              switch(i){
+                case 0:{          // formatting+Aux detected
+                  patternFound=1;
+                  last_millis_aux=millis();             // keep track of when was the last time Aux has been seen
+                  DEBUG_PRINTLN("CAN Decode: Found Aux string!");
+                  break;
+                }
+                case 1:   // either Fader, Balance, Bass, Treble or Sound Off
+                case 2:
+                case 3:
+                case 4:
+                case 5: patternFound=0;
+                        clearFlag(CAN_allowAutoRefresh);        // we let the following message(s) through
+              }
+              for(int j=0; j<6; j++){
+                  currentIndex[j]=0;
+              }
+              break;
+            }
+          } else {
+            currentIndex[i] = 0;                  // no match, start anew
+            if (rxDisplay == patterns[i][0]) {
+              currentIndex[i] = 1;
+            }
+          }
       }
     }
-    if(patternFound){
-      if(!CAN_allowDisplay){
-        CAN_allowDisplay=1;
-        DIS_forceUpdate=1;        // gotta force a buffer update here anyway since the metadata might be outdated
-      }
-      while(payload_bytes_received<payload_size){          // if there is any leftover data, wait for it and discard it, clearing the queue
-        xQueueReceive(canDispQueue, &rxDisplay, portMAX_DELAY);
-        payload_bytes_received++;
-      }
+    if(checkFlag(CAN_allowAutoRefresh) && !patternFound && (last_millis_aux+6000<millis())){
+      clearFlag(CAN_allowAutoRefresh);    // Aux string has not appeared within the last 6 secs -> stop auto-updating the display
+      DEBUG_PRINTLN("CAN Decode: Disabling display autorefresh...");
     } else {
-      if(CAN_allowDisplay) CAN_allowDisplay=0;
-      DEBUG_PRINTLN("CAN: No Aux string here...");
+      if(patternFound && !checkFlag(CAN_allowAutoRefresh)){
+        setFlag(CAN_allowAutoRefresh);
+        setFlag(DIS_forceUpdate);        // gotta force a buffer update here anyway since the metadata might be outdated (wouldn't wanna reprint old audio metadata right?)
+        DEBUG_PRINTLN("CAN Decode: Enabling display autorefresh...");
+      }
+      patternFound=0;
     }
-    patternFound=0;
-    if(uxQueueMessagesWaiting(canDispQueue)==0){
-      vTaskSuspend(NULL);     // suspend the task if there's no new data available, the canProcessTask will start it back up
-    } else {
-      DEBUG_PRINTLN("CAN: More data to process...");
-      vTaskDelay(pdMS_TO_TICKS(10));
-    }
+    vTaskDelay(pdMS_TO_TICKS(5));
   }
 }
 
 // loads formatted UTF16 data into CAN_MsgArray and labels the messages; needs to know how many bytes to load into the array; afterwards this array is ready to be transmitted with sendMultiPacket()
-void prepareMultiPacket(int bytesProcessed, char* buffer_to_read){             // longer CAN messages are split into appropriately labeled packets, starting with 0x21 up to 0x2F, then rolling back to 0x20
+void prepareMultiPacket(int bytesProcessed, char* buffer_to_read){             // longer CAN messages are split into appropriately labeled (the so called PCI) packets, starting with 0x21 up to 0x2F, then rolling back to 0x20
   int packetCount=bytesProcessed/7, bytesToProcess=bytesProcessed%7;
   unsigned char frameIndex=0x20;
   for(int i=0; i<packetCount; i++){
@@ -503,7 +580,11 @@ void prepareMultiPacket(int bytesProcessed, char* buffer_to_read){             /
     frameIndex=(frameIndex==0x2F)? 0x20: frameIndex+1;             // reset back to 0x20 after 0x2F, otherwise increment the frameIndex (consecutive frame index)
     memcpy(&CAN_MsgArray[i][1], &buffer_to_read[i*7], 7);       // copy 7 bytes at a time to fill consecutive frames with data
   }
-  CAN_MsgArray[0][0]=0x10;            // first frame index is always 0x10
+  if(bytesProcessed<=255){
+    CAN_MsgArray[0][0]=0x10;            // first frame index is always 0x10 for datasets smaller than 255 bytes
+  } else {
+    CAN_MsgArray[0][0]=0x11;
+  }
   if(bytesToProcess>0){                 // if there are bytes left to be processed but are not enough for a complete message, process them now
     CAN_MsgArray[packetCount][0]=frameIndex;
     memcpy(&CAN_MsgArray[packetCount][1], &buffer_to_read[packetCount*7], bytesToProcess);
@@ -512,92 +593,99 @@ void prepareMultiPacket(int bytesProcessed, char* buffer_to_read){             /
   CAN_MsgArray[packetCount+1][0]=0x0;      // remove the next frame label if there was any, as such it will not be transmitted
 }
 
-// sends a message request to the display
-void sendMultiPacket(){     // main loop shall decide when to send the following data
-  static twai_message_t MsgToTx;
-  MsgToTx.identifier=0x6C1;
-  MsgToTx.data_length_code=8;
-  memcpy(MsgToTx.data, CAN_MsgArray[0], 8);
-  CAN_prevTxFail=0;
-  xQueueSend(canTxQueue, &MsgToTx, portMAX_DELAY);
-}
-
-// sends the rest of the message buffer in quick succession
-void sendMultiPacketData(){   // should only be executed after the display acknowledges the incoming transmission
-  CAN_MessageReady=0;                   // new buffers can now be prepared as the will be sent
-  static twai_message_t MsgToTx;
-  MsgToTx.identifier=0x6C1;
-  MsgToTx.data_length_code=8;
-  for(int i=1;i<64 && (CAN_MsgArray[i][0]!=0x00 && !CAN_prevTxFail);i++){                 // this loop will stop sending data once the next packet doesn't contain a label
-    memcpy(MsgToTx.data, CAN_MsgArray[i], 8);
-    xQueueSend(canTxQueue, &MsgToTx, portMAX_DELAY);
-    vTaskDelay(pdMS_TO_TICKS(canISO_frameSpacing));         // receiving node can request a variable frame spacing time, we take it into account here, so far I've seen BID request 2ms while GID/CID request 0ms (no delay)
-  }
-  DEBUG_PRINTLN();
-  if(CAN_prevTxFail){
-    DIS_forceUpdate=1;
-    CAN_prevTxFail=0;
-  }
-}
-
 // function to queue a frame requesting measurement blocks
 void requestMeasurementBlocks(){
-  DEBUG_PRINTLN("CAN: Requesting measurements...");
-  if(ECC_present){              // request measurement blocks from the climate control module
+  DEBUG_PRINT("CAN: Requesting measurements from ");
+  if(checkFlag(ECC_present)){              // request measurement blocks from the climate control module
+    DEBUG_PRINTLN("climate control...");
     xQueueSend(canTxQueue, &Msg_MeasurementRequestECC, portMAX_DELAY);
   } else {
+    DEBUG_PRINTLN("display...");
     xQueueSend(canTxQueue, &Msg_MeasurementRequestDIS, portMAX_DELAY);        // fallback if ECC is not present, then we read reduced data from the display
   }
 }
 
-// below functions are used to add additional functionality to longpresses on the radio panel
-void canActionEhuButton0(){         // do not use for CD30! it does not have a "0" button
-}
-
-void canActionEhuButton1(){         // regular audio metadata mode
-  if(disp_mode!=0){
-    if(bt_audio_playing) disp_mode=0;   // we have to check whether the music is playing, else we the buffered song title just stays there
-    DIS_forceUpdate=1;
+// function to queue a frame requesting just the coolant data
+void requestCoolantTemperature(){
+  DEBUG_PRINT("CAN: Requesting coolant temperature from ");
+  if(checkFlag(ECC_present)){              // request measurement blocks from the climate control module
+    DEBUG_PRINTLN("climate control...");
+    xQueueSend(canTxQueue, &Msg_CoolantRequestECC, portMAX_DELAY);
+  } else {
+    DEBUG_PRINTLN("display...");
+    xQueueSend(canTxQueue, &Msg_CoolantRequestDIS, portMAX_DELAY);        // fallback if ECC is not present, then we read reduced data from the display
   }
 }
 
-void canActionEhuButton2(){         // printing speed+rpm, coolant and voltage from measurement blocks
-  if(disp_mode!=1){
-    CAN_new_dataSet_recvd=0;
+// below functions are used to add additional functionality to longpresses on the radio panel
+void canActionEhuButton0(bool btn_state, unsigned int btn_ms_held){         // do not use for CD30! it does not have a "0" button
+}
+
+// regular audio metadata mode
+void canActionEhuButton1(bool btn_state, unsigned int btn_ms_held){
+  if(disp_mode!=0 && btn_ms_held>=500){
+    disp_mode=0;   // we have to check whether the music is playing, else the buffered song title just stays there
+    setFlag(DIS_forceUpdate);
+  }
+}
+
+// measurement mode type 1, printing speed+rpm, coolant and voltage from measurement blocks
+void canActionEhuButton2(bool btn_state, unsigned int btn_ms_held){
+  if(disp_mode!=1 && btn_ms_held>=500){
+    clearFlag(CAN_new_dataSet_recvd);
     disp_mode=1;
-    disp_mode_changed=1;
+    setFlag(disp_mode_changed);
     DEBUG_PRINTLN("DISP_MODE: Switching to vehicle data...");
   }
 }
 
-void canActionEhuButton3(){
-  if(disp_mode!=2){
-    CAN_new_dataSet_recvd=0;
+// measurement mode type 2, printing coolant from measurement blocks
+void canActionEhuButton3(bool btn_state, unsigned int btn_ms_held){
+  if(disp_mode!=2 && btn_ms_held>=500){
+    clearFlag(CAN_new_dataSet_recvd);
     disp_mode=2;
-    disp_mode_changed=1;
+    setFlag(disp_mode_changed);
     DEBUG_PRINTLN("DISP_MODE: Switching to 1-line coolant...");
   }
 }
 
-void canActionEhuButton4(){
+// no action
+void canActionEhuButton4(bool btn_state, unsigned int btn_ms_held){
 }
 
-void canActionEhuButton5(){
+// no action
+void canActionEhuButton5(bool btn_state, unsigned int btn_ms_held){
 }
 
-void canActionEhuButton6(){
+// no action
+void canActionEhuButton6(bool btn_state, unsigned int btn_ms_held){
 }
 
-void canActionEhuButton7(){
+// no action
+void canActionEhuButton7(bool btn_state, unsigned int btn_ms_held){
 }
 
-void canActionEhuButton8(){
-  OTA_begin=1;
+// Start OTA to allow updating over Wi-Fi
+void canActionEhuButton8(bool btn_state, unsigned int btn_ms_held){
+  if(!checkFlag(OTA_begin) && btn_ms_held>=1000){
+    setFlag(OTA_begin);
+  } else {
+    if(btn_ms_held>=5000) setFlag(OTA_abort);
+  }
 }
 
-void canActionEhuButton9(){
-  if(disp_mode!=-1){
+// holding the button for half a second disables EHU32 influencing the screen in any way, holding it for 5 whole seconds clears any saved settings and hard resets the ESP32
+void canActionEhuButton9(bool btn_state, unsigned int btn_ms_held){
+  if(disp_mode!=-1 && btn_ms_held>=500){
     disp_mode=-1;
     DEBUG_PRINTLN("Screen updates disabled");
+  }
+  if(btn_ms_held>=5000){
+    if(!checkFlag(OTA_begin)){
+      vTaskDelay(pdMS_TO_TICKS(1000));
+      prefs_clear();
+      vTaskDelay(pdMS_TO_TICKS(1000));
+      ESP.restart();
+    }
   }
 }
