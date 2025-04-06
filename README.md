@@ -2,7 +2,7 @@
 
 EHU32 brings bluetooth audio to your Opel/Vauxhall vehicle, integrating with the onboard display and radio. 
 
-Compatible with vehicles equipped with CID/GID/BID/TID display units, additionally giving you the option to view live diagnostic data. Supports headunits such as CD30/CD30MP3/CD40USB/CD70Navi/DVD90Navi, as long as you've got an Aux input.
+Compatible with vehicles equipped with CID/GID/BID/TID display units, additionally giving you the option to view live diagnostic data. Supports headunits such as CD30/CD30MP3/CD40USB/CDC40Opera/CD70Navi/DVD90Navi, as long as you've got an **Aux input**.
 
 **EHU32 is non-invasive** and does not require modification to the existing hardware in your car - it can be connected to the OBD-II diagnostic port and radio unit's Aux input. 
 
@@ -11,17 +11,17 @@ Compatible with vehicles equipped with CID/GID/BID/TID display units, additional
 ## Features
 - **Bluetooth (A2DP) audio**, data is output to an external I2S DAC, such as PCM5102
 - **control connected audio source** (play/pause, previous/next track) using buttons on the **steering wheel**
-- shows you what is currently playing on the center console display
-  * prints **Artist**, **Track title** and **Album**, just like a CD playback would
+- shows you what is currently playing on the center console display in **Aux mode**
+  * prints **Artist**, **Track title** and **Album**, just like regular CD playback would
   * this is the default mode, otherwise accessible by long pressing "1"
-- alternatively, EHU32 can also display live data, such as vehicle speed, RPMs, coolant temperature and battery voltage*
+- alternatively, EHU32 can also display live data, such as vehicle speed, RPMs, coolant temperature and battery voltage
   * accessible by long pressing "2" on the radio panel
   * for single line displays, "3" prints just the coolant temperature
-  * disable printing to the screen by holding "9"
-  * *battery voltage is available if your vehicle is equipped with Electronic Climate Control*
-- allows toggling AC with just a **single press of the AC selector knob**
+  * note that this mode will overwrite anything on the screen like FM radio or CD playback
+  * disable printing to the screen by holding "9" (or hold it for the total of 5 seconds to reset the entire board)
+- allows toggling AC with just a **single press of the AC selector knob** (if your vehicle is equipped with ECC)
   
-EHU32 can be updated over-the-air, holding "8" enables the wifi hotspot (password ehu32updater). Note that this disables CAN and bluetooth A2DP until the board is reset.
+EHU32 can be updated over-the-air, holding "8" enables the wifi hotspot (password ehu32updater). To leave the OTA mode, press "8" for 5 seconds. 
 
 ## How it looks
 Demo video:
@@ -38,9 +38,12 @@ Video showing measurement data displayed in real time (warning, contains music!)
 
 ## How it works and general usage tips
 While this project aims to make the experience as seamless as possible, there are some shortcomings that have to be addressed:
+- First start (or hard resetting) will take up to 30-40 seconds, because EHU32 will attempt to test your vehicle's display capability and other modules your vehicle is equipped with in order to ensure high level of compatibility. **Please turn on your headunit (engine/ignition is not necessary) and wait patiently** until the startup message is shown!
 - Bluetooth is ONLY enabled once EHU32 detects the radio talking to the display over CAN bus
-- the audio source volume has to be set to maximum in order to avoid unnecessary noise. Adjust the volume as usual, using the radio's volume control knob or steering wheel buttons.
+- The audio source volume has to be set to maximum in order to avoid unnecessary noise. Adjust the volume as usual, using the radio's volume control knob or steering wheel buttons.
 - EHU32 scans the messages and is looking for "Aux", but once you switch off of Aux mode, there might be a delay before the screen is updated to FM radio mode
+- If you have a CD30/CD40 headunit, press "SOUND" twice if you want to adjust bass/treble/balance etc. This is a necessary evil because EHU32 can only block messages ahead of time, way before it knows what are they saying. Nevertheless, it still detects that Aux is no longer displayed hence the sound menu will show up on the second button press
+- In case your android device experiences issues with music playback (skipping, crackling and such), go into bluetooth settings, choose EHU32 from the list and disable **"Keep volume consistent"**
 
 If you came here looking for inspiration I'd recommend checking out the [wiki page](https://github.com/PNKP237/EHU32/wiki). I have documented some basics that might come in handy when developing your own addons for these vehicles.
 
@@ -48,9 +51,11 @@ If you came here looking for inspiration I'd recommend checking out the [wiki pa
 Required hardware: ESP32 board with antenna connector and an antenna (of the classic flavor, A2DP doesn't work on ESP32-C3), PCM5102A DAC module, any CAN transceiver module (in my case MCP2551).
 Required connections:
 - 5V to: ESP32 VIN pin, MCP2551 VCC pin, PCM5102 VIN pin;
-- CAN bus: D4 to CAN_RX, D5 to CAN_TX, CANL and CANH wired up to the vehicle's MS-CAN (accessible by either OBD-II diagnostic port - CAN-H and CAN-L on pins 3 and 11 respectively, radio, display, electronic climate control);
+- CAN bus: D4 to CAN_RX, D5 to CAN_TX, CANL and CANH wired up to the vehicle's MS-CAN (accessible by either OBD-II diagnostic port - CAN-H and CAN-L on pins 3 and 11 respectively or in radio, display, electronic climate control);
 - I2S DAC: GND to SCK, D26 to BCK, D22 to DIN, D25 to LCK, D23 to XSMT;
 - Configure jumpers on the back of the I2S DAC module: short 1-L, 2-L, 4-L, 3 NOT SHORTED.
+
+Some ESP32 boards have been found to cause problems with audio playback over I2S (mainly exhibited with iPhones and Huawei phones), while it's difficult to suggest an ESP32 board that's confirmed to work, the **WeAct ESP32-D0WD** board is something that I can recommend myself.
 
 This repo contains a PDF schematic outlining which connections are required to make this work and [this post](https://github.com/PNKP237/EHU32/issues/3#issuecomment-2121866276) shows how to install the modules within a CD30MP3 radio unit.
 
@@ -64,7 +69,7 @@ The EHU32 standalone PCB project is finally complete, but it'll take some time b
 
 ## Compilation notes
 Please use version **2.0.17 of ESP32 arduino core**. More recent versions don't seem stable enough, at least in my limited testing. 
-Tested with ESP32-A2DP v1.8.4 and arduino-audio-tools v1.0.0.
+Tested with ESP32-A2DP v1.8.6 and arduino-audio-tools v1.1.0.
 
 TWAI driver written by ESP as part of their ESP-IDF framework isn't perfect. To ensure everything works properly you'll need to modify "sdkconfig" which is located in %USERPROFILE%\AppData\Local\Arduino15\packages\esp32\hardware\esp32\version\tools\sdk\esp32\
 
