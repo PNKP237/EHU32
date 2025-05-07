@@ -1,6 +1,117 @@
 // below is data required to be included in every line - text formatting is based on those
 const char DIS_leftadjusted[14]={0x00,0x1B,0x00,0x5B,0x00,0x66,0x00,0x53,0x00,0x5F,0x00,0x67,0x00,0x6D}, DIS_smallfont[14]={0x00,0x1B,0x00,0x5B,0x00,0x66,0x00,0x53,0x00,0x5F,0x00,0x64,0x00,0x6D}, DIS_centered[8]={0x00, 0x1B, 0x00, 0x5B, 0x00, 0x63, 0x00, 0x6D}, DIS_rightadjusted[8]={0x00, 0x1B, 0x00, 0x5B, 0x00, 0x72, 0x00, 0x6D};
 
+char *transliterate(const char *input) {
+    size_t len = strlen(input);
+    char *output = (char *)malloc(len * 3 + 1); // allocate a maximum (3 characters per letter + '\0')
+
+    if (!output) { 
+        return NULL;
+    }
+
+    size_t j = 0;
+    for (size_t i = 0; i < len; i++) {
+        unsigned char firstByte = (unsigned char)input[i];
+
+        if (firstByte == 0xD0 || firstByte == 0xD1 || firstByte == 0xD2) { // handle some cyrillic symbols in UTF-8
+            unsigned char secondByte = (unsigned char)input[++i];
+
+            switch (firstByte) {
+                case 0xD0:  
+                    switch (secondByte) {
+                        case 0x84: output[j++] = 'E'; break;
+                        case 0x86: output[j++] = 'I'; break;
+                        case 0x87: output[j++] = 'Y', output[j++] = 'i'; break;
+                        case 0x90: output[j++] = 'A'; break;
+                        case 0x91: output[j++] = 'B'; break;
+                        case 0x92: output[j++] = 'V'; break;
+                        case 0x93: output[j++] = 'G'; break;
+                        case 0x94: output[j++] = 'D'; break;
+                        case 0x95: output[j++] = 'E'; break;
+                        case 0x81: output[j++] = 'Y', output[j++] = 'o'; break;
+                        case 0x96: output[j++] = 'Z', output[j++] = 'h'; break;
+                        case 0x97: output[j++] = 'Z'; break;
+                        case 0x98: output[j++] = 'Y'; break;
+                        case 0x99: output[j++] = 'Y'; break;
+                        case 0x9A: output[j++] = 'K'; break;
+                        case 0x9B: output[j++] = 'L'; break;
+                        case 0x9C: output[j++] = 'M'; break;
+                        case 0x9D: output[j++] = 'N'; break;
+                        case 0x9E: output[j++] = 'O'; break;
+                        case 0x9F: output[j++] = 'P'; break;
+                        case 0xA0: output[j++] = 'R'; break;
+                        case 0xA1: output[j++] = 'S'; break;
+                        case 0xA2: output[j++] = 'T'; break;
+                        case 0xA3: output[j++] = 'U'; break;
+                        case 0xA4: output[j++] = 'F'; break;
+                        case 0xA5: output[j++] = 'H'; break;
+                        case 0xA6: output[j++] = 'T', output[j++] = 's'; break;
+                        case 0xA7: output[j++] = 'C', output[j++] = 'h'; break;
+                        case 0xA8: output[j++] = 'S', output[j++] = 'h'; break;
+                        case 0xA9: output[j++] = 'S', output[j++] = 'h', output[j++] = 'c', output[j++] = 'h'; break;
+                        case 0xAB: output[j++] = 'Y'; break;
+                        case 0xAD: output[j++] = 'E'; break;
+                        case 0xAE: output[j++] = 'Y', output[j++] = 'u'; break;
+                        case 0xAF: output[j++] = 'Y', output[j++] = 'a'; break;
+                        // lower case
+                        case 0xB0: output[j++] = 'a'; break;
+                        case 0xB1: output[j++] = 'b'; break;
+                        case 0xB2: output[j++] = 'v'; break;
+                        case 0xB3: output[j++] = 'g'; break;
+                        case 0xB4: output[j++] = 'd'; break;
+                        case 0xB5: output[j++] = 'e'; break;
+                        case 0xB6: output[j++] = 'z', output[j++] = 'h'; break;
+                        case 0xB7: output[j++] = 'z'; break;
+                        case 0xB8: output[j++] = 'y'; break;
+                        case 0xB9: output[j++] = 'y'; break;
+                        case 0xBA: output[j++] = 'k'; break;
+                        case 0xBB: output[j++] = 'l'; break;
+                        case 0xBC: output[j++] = 'm'; break;
+                        case 0xBD: output[j++] = 'n'; break;
+                        case 0xBE: output[j++] = 'o'; break;
+                        case 0xBF: output[j++] = 'p'; break;
+                    }
+                    break;
+
+                case 0xD1:
+                    switch (secondByte) {
+                        case 0x80: output[j++] = 'r'; break;
+                        case 0x81: output[j++] = 's'; break;
+                        case 0x82: output[j++] = 't'; break;
+                        case 0x83: output[j++] = 'u'; break;
+                        case 0x84: output[j++] = 'f'; break;
+                        case 0x85: output[j++] = 'h'; break;
+                        case 0x86: output[j++] = 't', output[j++] = 's'; break;
+                        case 0x87: output[j++] = 'c', output[j++] = 'h'; break;
+                        case 0x88: output[j++] = 's', output[j++] = 'h'; break;
+                        case 0x89: output[j++] = 's', output[j++] = 'h', output[j++] = 'c', output[j++] = 'h'; break;
+                        case 0x8B: output[j++] = 'y'; break;
+                        case 0x8D: output[j++] = 'e'; break;
+                        case 0x8E: output[j++] = 'y', output[j++] = 'u'; break;
+                        case 0x8F: output[j++] = 'y', output[j++] = 'a'; break;
+                        case 0x94: output[j++] = 'y', output[j++] = 'e'; break;
+                        case 0x96: output[j++] = 'i'; break;
+                        case 0x97: output[j++] = 'y', output[j++] = 'i'; break;
+                    }
+                    break;
+                
+                case 0xD2:
+                    switch (secondByte) {
+                      case 0x90: output[j++] = 'G'; break;
+                      case 0x91: output[j++] = 'g'; break;
+                    }
+                    break;
+            }
+        } else {
+            output[j++] = firstByte;
+        }
+    }
+
+    output[j] = '\0'; // end of the row
+    
+    return output;
+}
+
 // converts an UTF-8 buffer to UTF-16, filters out unsupported chars, returns the amount of chars processed
 unsigned int utf8_to_utf16(const char* utf8_buffer, char* utf16_buffer){
   unsigned int utf16_bytecount=0;
@@ -54,17 +165,17 @@ int processDisplayMessage(char* upper_line_buffer, char* middle_line_buffer, cha
   static char utf16_middle_line[256], utf16_lower_line[256], utf16_upper_line[256];
   int upper_line_buffer_length=0, middle_line_buffer_length=0, lower_line_buffer_length=0;
   if(upper_line_buffer!=nullptr){                                           // converting UTF-8 strings to UTF-16 and calculating string lengths to keep track of processed data
-    upper_line_buffer_length=utf8_to_utf16(upper_line_buffer, utf16_upper_line);
+    upper_line_buffer_length=utf8_to_utf16(transliterate(upper_line_buffer), utf16_upper_line);
   }
   if(middle_line_buffer!=nullptr){
-    middle_line_buffer_length=utf8_to_utf16(middle_line_buffer, utf16_middle_line);
+    middle_line_buffer_length=utf8_to_utf16(transliterate(middle_line_buffer), utf16_middle_line);
     if(middle_line_buffer_length==0 || (middle_line_buffer_length==1 && utf16_middle_line[1]==0x20)){ // -> empty line (or unsupported chars)
       snprintf(middle_line_buffer, 8, "Playing");    // if the middle line was to be blank you can at least tell that there's audio being played
-      middle_line_buffer_length=utf8_to_utf16(middle_line_buffer, utf16_middle_line);   // do this once again for the new string
+      middle_line_buffer_length=utf8_to_utf16(transliterate(middle_line_buffer), utf16_middle_line);   // do this once again for the new string
     }
   }
   if(lower_line_buffer!=nullptr){
-    lower_line_buffer_length=utf8_to_utf16(lower_line_buffer, utf16_lower_line);
+    lower_line_buffer_length=utf8_to_utf16(transliterate(lower_line_buffer), utf16_lower_line);
   }
 
   #ifdef DEBUG_STRINGS               // debug stuff
