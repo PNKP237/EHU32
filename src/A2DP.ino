@@ -72,7 +72,7 @@ void a2dp_init(){
   setFlag(a2dp_started);
   DEBUG_PRINTLN("A2DP: Started!");
   disp_mode=0;                      // set display mode to audio metadata on boot
-  writeTextToDisplay(1, "EHU32 v0.9.4", "Bluetooth on", "Waiting for connection...");
+  writeTextToDisplay(1, "EHU32 v0.9.5", "Bluetooth on", "Waiting for connection...");
 }
 
 // handles events such as connecion/disconnection and audio play/pause

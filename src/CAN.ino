@@ -3,7 +3,7 @@
 void OTAhandleTask(void* pvParameters);
 
 // CAN-related variables
-volatile uint8_t canISO_frameSpacing=1;   // simple implementation of ISO 15765-2 variable frame spacing, based on flow control frames by the receiving node
+volatile uint8_t canISO_frameSpacing=0;   // simple implementation of ISO 15765-2 variable frame spacing, based on flow control frames by the receiving node
 
 // defining static CAN frames for simulation
 const twai_message_t  simulate_scroll_up={ .identifier=0x201, .data_length_code=3, .data={0x08, 0x6A, 0x01}},
@@ -65,7 +65,7 @@ void canReceiveTask(void *pvParameters){
       switch(Recvd_CAN_MSG.identifier){
         case 0x6C1: {
           if(disp_mode!=-1){            // don't bother checking the data if there's no need to update the display
-            if(Recvd_CAN_MSG.data[0]==0x10 && (Recvd_CAN_MSG.data[2]==0x40 || Recvd_CAN_MSG.data[2]==0xC0) && Recvd_CAN_MSG.data[5]==0x03 && (disp_mode!=0 || allowDisplayBlocking)){       // another task processes the data since we can't do that here
+            if(Recvd_CAN_MSG.data[0]==0x10 && (Recvd_CAN_MSG.data[2]==0x40 || Recvd_CAN_MSG.data[2]==0xC0 || (Recvd_CAN_MSG.data[2]==0x50 && Recvd_CAN_MSG.data[1]==0x4A)) && Recvd_CAN_MSG.data[5]==0x03 && (disp_mode!=0 || allowDisplayBlocking)){       // another task processes the data since we can't do that here
               twai_transmit(&Msg_PreventDisplayUpdate, pdMS_TO_TICKS(30));  // radio blocking msg has to be transmitted ASAP, which is why we skip the queue
               DEBUG_PRINTLN("CAN: Received display update, trying to block");
               twai_read_alerts(&alerts_FlowCtl, pdMS_TO_TICKS(10));    // read stats to a local alert buffer
@@ -77,7 +77,7 @@ void canReceiveTask(void *pvParameters){
                 DEBUG_PRINTLN("CAN: Blocking failed!");
               }
               overwriteAttemped=1;    // if the display message retransmission was intended to mask the radio's message
-              if(eTaskGetState(canDisplayTaskHandle)==eRunning){
+              if(eTaskGetState(canDisplayTaskHandle)!=eSuspended){
                 if(Recvd_CAN_MSG.data[0]==0x10) setFlag(CAN_abortMultiPacket);    // let the transmission task know that the radio has transmissed a new first frame -> any ongoing transmission is no longer valid
               }
               vTaskResume(canDisplayTaskHandle); // only retransmit the msg for audio metadata mode and single line coolant, since these don't update frequently
@@ -128,6 +128,7 @@ void canReceiveTask(void *pvParameters){
 void canProcessTask(void *pvParameters){
   static twai_message_t RxMsg;
   bool badVoltage_VectraC_bypass=0;
+  unsigned long millis_EccKnobPressed;
   while(1){
     xQueueReceive(canRxQueue, &RxMsg, portMAX_DELAY);     // receives data from the internal queue
     switch(RxMsg.identifier){
@@ -186,9 +187,21 @@ void canProcessTask(void *pvParameters){
         break;
       }
       case 0x208: {                               // AC panel button event
-        if(RxMsg.data[0]==0x0 && RxMsg.data[1]==0x17 && RxMsg.data[2]<0x03){          // FIXME!
-          vTaskResume(canAirConMacroTaskHandle);   // start AC macro
-        }
+        if(eTaskGetState(canAirConMacroTaskHandle)==eSuspended){
+          if(RxMsg.data[0]==0x01 && RxMsg.data[1]==0x17 && RxMsg.data[2]==0x0){     // button pressed, start save timestamp
+            millis_EccKnobPressed=millis();
+          } else {
+            if(RxMsg.data[0]==0x0 && RxMsg.data[1]==0x17 && (RxMsg.data[2]==0x0 || RxMsg.data[2]>=0x05)){
+              if(RxMsg.data[2]>=0x05){    // properly implemented ECC button counting (such as Vectra C) does not require stupid workarounds
+                vTaskResume(canAirConMacroTaskHandle);
+              } else {
+                if((millis_EccKnobPressed+400)<=millis()){  // late Astra/Corsa/Zafira ECCs don't follow the standard, as these only report the initial press and release (saying it was released after being held for 0ms lol)
+                  vTaskResume(canAirConMacroTaskHandle);    // so we count the time on our own, and if the time elapsed 
+                }
+              }
+            }
+          }
+        } // should be an else here to implement something to stop the macro task, can't be bothered to implement this now
         break;
       }
       case 0x2C1: {
@@ -299,7 +312,7 @@ void canProcessTask(void *pvParameters){
           a2dp_sink.reconnect();
           setFlag(ehu_started);
         }
-        if(disp_mode==0){      // if not a consecutive frame, then we queue that data for decoding by another task
+        if(disp_mode==0){      // queue that data for decoding by another task
           for(int i=1; i<=7; i++){
             xQueueSend(canDispQueue, &RxMsg.data[i], portMAX_DELAY);    // send a continuous byte stream
           }
@@ -567,7 +580,7 @@ void canMessageDecoder(void *pvParameters){
       }
       patternFound=0;
     }
-    vTaskDelay(pdMS_TO_TICKS(5));
+    vTaskDelay(pdMS_TO_TICKS(2));
   }
 }
 
@@ -580,7 +593,7 @@ void prepareMultiPacket(int bytesProcessed, char* buffer_to_read){             /
     frameIndex=(frameIndex==0x2F)? 0x20: frameIndex+1;             // reset back to 0x20 after 0x2F, otherwise increment the frameIndex (consecutive frame index)
     memcpy(&CAN_MsgArray[i][1], &buffer_to_read[i*7], 7);       // copy 7 bytes at a time to fill consecutive frames with data
   }
-  if(bytesProcessed<=255){
+  if(bytesProcessed<=255){       // TODO: implement proper 255+ byte DoCAN handling
     CAN_MsgArray[0][0]=0x10;            // first frame index is always 0x10 for datasets smaller than 255 bytes
   } else {
     CAN_MsgArray[0][0]=0x11;
@@ -670,7 +683,7 @@ void canActionEhuButton8(bool btn_state, unsigned int btn_ms_held){
   if(!checkFlag(OTA_begin) && btn_ms_held>=1000){
     setFlag(OTA_begin);
   } else {
-    if(btn_ms_held>=5000) setFlag(OTA_abort);
+    if(btn_ms_held>=5000) setFlag(OTA_abort);       // allows to break out of OTA mode
   }
 }
 
@@ -680,7 +693,7 @@ void canActionEhuButton9(bool btn_state, unsigned int btn_ms_held){
     disp_mode=-1;
     DEBUG_PRINTLN("Screen updates disabled");
   }
-  if(btn_ms_held>=5000){
+  if(btn_ms_held>=5000){                // this will perform a full reset, including clearing settings, so the next boot will take some time
     if(!checkFlag(OTA_begin)){
       vTaskDelay(pdMS_TO_TICKS(1000));
       prefs_clear();

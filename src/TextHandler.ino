@@ -156,9 +156,9 @@ int processDisplayMessage(char* upper_line_buffer, char* middle_line_buffer, cha
     last_byte_written+=2;
   }
   if(last_byte_written>254){                      // message size can't be larger than 255 bytes, as the character specifying total payload is an 8 bit value
-    //last_byte_written=254;                        // we can send that data though, it will just be ignored, no damage is done
+    last_byte_written=254;                        // we can send that data though, it will just be ignored, no damage is done
   }
-  DisplayMsg[0]=((last_byte_written%254)+1);         // TOTAL PAYLOAD SIZE based on how many bytes have been written
+  DisplayMsg[0]=last_byte_written+1;         // TOTAL PAYLOAD SIZE based on how many bytes have been written
   DisplayMsg[3]=DisplayMsg[0]-3;               // payload size written as part of the 4000 command
   return last_byte_written+1;                   // return the total message size
 }
