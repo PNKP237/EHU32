@@ -18,13 +18,15 @@ Compatible with vehicles equipped with CID/GID/BID/TID display units, additional
   * accessible by long pressing "2" on the radio panel
   * for single line displays, "3" prints just the coolant temperature
   * note that this mode will overwrite anything on the screen like FM radio or CD playback
-  * disable printing to the screen by holding "9" (or hold it for the total of 5 seconds to reset the entire board)
-- allows toggling AC with just a **single press of the AC selector knob** (if your vehicle is equipped with ECC)
+  * disable printing to the screen by holding "9" (or hold it for the total of 5 seconds to reset the entire board, that also clears the settings)
+- allows toggling AC with just a **single long-press of the AC selector knob** if it's held for at least half a second
   
 EHU32 can be updated over-the-air, holding "8" enables the wifi hotspot (password ehu32updater). To leave the OTA mode, press "8" for 5 seconds. 
 
 ## How it looks
-Demo video:
+Demo videos:
+
+[![Click here to watch EHU32 demo on YouTube](https://img.youtube.com/vi/CZvhz3yvV1g/0.jpg)](https://www.youtube.com/watch?v=CZvhz3yvV1g)
 
 [![Click here to watch EHU32 demo on YouTube](https://img.youtube.com/vi/cj5L4aGAB5w/0.jpg)](https://www.youtube.com/watch?v=cj5L4aGAB5w)
 
@@ -40,7 +42,7 @@ Video showing measurement data displayed in real time (warning, contains music!)
 While this project aims to make the experience as seamless as possible, there are some shortcomings that have to be addressed:
 - First start (or hard resetting) will take up to 30-40 seconds, because EHU32 will attempt to test your vehicle's display capability and other modules your vehicle is equipped with in order to ensure high level of compatibility. **Please turn on your headunit (engine/ignition is not necessary) and wait patiently** until the startup message is shown!
 - Bluetooth is ONLY enabled once EHU32 detects the radio talking to the display over CAN bus
-- The audio source volume has to be set to maximum in order to avoid unnecessary noise. Adjust the volume as usual, using the radio's volume control knob or steering wheel buttons.
+- The audio source volume has to be set to maximum in order to avoid unnecessary noise (unless the audio is clearly distorted and is clipping). Adjust the volume as usual, using the radio's volume control knob or steering wheel buttons.
 - EHU32 scans the messages and is looking for "Aux", but once you switch off of Aux mode, there might be a delay before the screen is updated to FM radio mode
 - If you have a CD30/CD40 headunit, press "SOUND" twice if you want to adjust bass/treble/balance etc. This is a necessary evil because EHU32 can only block messages ahead of time, way before it knows what are they saying. Nevertheless, it still detects that Aux is no longer displayed hence the sound menu will show up on the second button press
 - In case your android device experiences issues with music playback (skipping, crackling and such), go into bluetooth settings, choose EHU32 from the list and disable **"Keep volume consistent"**
