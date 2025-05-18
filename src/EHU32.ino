@@ -110,6 +110,7 @@ void setup(){
     settings.putBool("setupcomplete", 0);
     settings.putBool("uhppresent", 0);
     settings.putBool("eccpresent", 0);
+    settings.putBool("vectra", 0);
     settings.putUInt("identifier", 0);
   }
   bool init_setupComplete=settings.getBool("setupcomplete", 0);   // prefs init
@@ -219,6 +220,24 @@ void canWatchdogTask(void *pvParameters){
     }
     vTaskDelay(pdMS_TO_TICKS(1000));
   }
+}
+
+// reads settings from preferences
+bool getPreferencesBool(const char* key){
+  Preferences settings;
+  bool result;
+  settings.begin("my-app", true);
+  result=settings.getBool(key, 0);
+  settings.end();
+  return result;
+}
+
+// writes settings to preferences
+void setPreferencesBool(const char* key, bool value){
+  Preferences settings;
+  settings.begin("my-app", false);
+  settings.putBool(key, value);
+  settings.end();
 }
 
 // below functions are used to simplify interaction with freeRTOS eventGroups
