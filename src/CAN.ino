@@ -127,7 +127,7 @@ void canReceiveTask(void *pvParameters){
 // this task processes filtered CAN frames read from canRxQueue
 void canProcessTask(void *pvParameters){
   static twai_message_t RxMsg;
-  bool badVoltage_VectraC_bypass=0;
+  bool badVoltage_VectraC_bypass=getPreferencesBool("vectra"); // read from the preferences to check if the car is a vectra
   unsigned long millis_EccKnobPressed;
   while(1){
     xQueueReceive(canRxQueue, &RxMsg, portMAX_DELAY);     // receives data from the internal queue
@@ -267,6 +267,7 @@ void canProcessTask(void *pvParameters){
                   snprintf(voltage_buffer, sizeof(voltage_buffer), "Voltage: %.1f V  ", CAN_data_voltage);
                 } else {            // we get erroneous readings, as such we'll switch to reading from display on the next measurement request
                   badVoltage_VectraC_bypass=1;
+                  setPreferencesBool("vectra", 1);
                 }
                 setFlag(CAN_voltage_recvd);
                 DEBUG_PRINT("battery voltage\n");
