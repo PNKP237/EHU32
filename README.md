@@ -18,7 +18,7 @@ Compatible with vehicles equipped with CID/GID/BID/TID display units, additional
 - alternatively, EHU32 can also display live data, such as vehicle speed, RPMs, coolant temperature and battery voltage
   * accessible by long pressing "2" on the radio panel
   * for single line displays, "3" prints just the coolant temperature
-  * note that this mode will overwrite anything on the screen like FM radio or CD playback
+  * note that this mode will overwrite anything on the screen, even in FM radio mode or during CD playback
   * disable printing to the screen by holding "9" (or hold it for the total of 5 seconds to reset the entire board, that also clears the settings)
 - allows toggling AC with just a **single long-press of the AC selector knob** if it's held for at least half a second
   
@@ -51,16 +51,23 @@ While this project aims to make the experience as seamless as possible, there ar
 If you came here looking for inspiration I'd recommend checking out the [wiki page](https://github.com/PNKP237/EHU32/wiki). I have documented some basics that might come in handy when developing your own addons for these vehicles.
 
 ## Building it yourself
-Required hardware: ESP32 board with antenna connector and an antenna (of the classic flavor, A2DP doesn't work on ESP32-C3), PCM5102A DAC module, any CAN transceiver module (in my case MCP2551).
-Required connections:
-- 5V to: ESP32 VIN pin, MCP2551 VCC pin, PCM5102 VIN pin;
-- CAN bus: D4 to CAN_RX, D5 to CAN_TX, CANL and CANH wired up to the vehicle's MS-CAN (accessible by either OBD-II diagnostic port - CAN-H and CAN-L on pins 3 and 11 respectively or in radio, display, electronic climate control);
-- I2S DAC: GND to SCK, D26 to BCK, D22 to DIN, D25 to LCK, D23 to XSMT;
-- Configure jumpers on the back of the I2S DAC module: short 1-L, 2-L, 4-L, 3 NOT SHORTED.
+Required hardware:
+- ESP32 module (preferably an official Espressif-made module) with an antenna (IPX) connector;
+- any IPX antenna - you can use one recovered from an old, broken down notebook or buy one from any website;
+- PCM5102A DAC module (with configurable jumpers on the bottom, **make sure to configure them accordingly**);
+- any CAN transceiver module - MCP2551 (VCC 5V), TDA104x/TDA1050 (VCC 5V), SN65HVD23x (VCC 3.3V).
 
-Some ESP32 boards have been found to cause problems with audio playback over I2S (mainly exhibited with iPhones and Huawei phones), while it's difficult to suggest an ESP32 board that's confirmed to work, the ones with antenna connectors are often fine. Look for boards with Espressif etched on the RF shield!
+Refer to [EHU32_wiring.pdf](https://github.com/PNKP237/EHU32/blob/main/EHU32_wiring.pdf) for a guide on how to wire up the modules together.
 
-This repo contains a PDF schematic outlining which connections are required to make this work and [this post](https://github.com/PNKP237/EHU32/issues/3#issuecomment-2121866276) shows how to install the modules within a CD30MP3 radio unit.
+Please note to configure the PCM5102A module correctly with the jumpers on the bottom.
+
+The MS-CAN bus can be accessed through the diagnostic port (pins 3 and 11 respectively for CAN-H and CAN-L), the headunit, the display, the climate control panel or the factory bluetooth hands-free module.
+
+You can install these modules inside the factory headunit:
+- for CD30MP3 (Delphi-Grundig) refer to [this post](https://github.com/PNKP237/EHU32/issues/3#issuecomment-2121866276);
+- for CD70Navi refer to [this wiki article](https://github.com/PNKP237/EHU32/wiki/Hardware-modification-%E2%80%90-EHU32-installation-in-CD70-Navi).
+
+Some ESP32 boards have been found to cause problems with audio playback over I2S (mainly exhibited with iPhones and Huawei phones), while it's difficult to suggest an ESP32 board that's confirmed to work, the ones with antenna connectors are often fine. **Look for boards with Espressif etched on the RF shield!**
 
 Note that this should be soldered directly in the radio unit as the OBD-II port only provides unswitched 12V. Powering it from a 5V car charger also works.
 Do not connect headphones to the DAC module, its output is supposed to only be connected to amplifier input - in case of this project either the AUX socket of radio's internal AUX input.
@@ -69,9 +76,9 @@ Do not connect headphones to the DAC module, its output is supposed to only be c
 Please use version **2.0.17 of ESP32 arduino core**. More recent versions don't seem stable enough, at least in my limited testing. 
 Tested with ESP32-A2DP v1.8.7 and arduino-audio-tools v1.1.1.
 
-TWAI driver written by ESP as part of their ESP-IDF framework isn't perfect. To ensure everything works properly you'll need to modify "sdkconfig" which is located in %USERPROFILE%\AppData\Local\Arduino15\packages\esp32\hardware\esp32\version\tools\sdk\esp32\
+TWAI driver written by ESP as part of their ESP-IDF framework isn't perfect. To ensure everything works properly you'll need to modify "**sdkconfig**" which is located in %USERPROFILE%\AppData\Local\Arduino15\packages\esp32\hardware\esp32\version\tools\sdk\esp32\
 
-Under "TWAI configuration" section enable **CONFIG_TWAI_ISR_IN_IRAM** and modify **CONFIG_TWAI_ERRATA_FIX_TX_INTR_LOST** so the errata fix is not applied. The whole section should look like this:
+Under "TWAI configuration" section enable **CONFIG_TWAI_ISR_IN_IRAM** and modify **CONFIG_TWAI_ERRATA_FIX_TX_INTR_LOST** so the errata fix is not applied. The entire **TWAI configuration** section should look like this:
 ```
 #
 # TWAI configuration
