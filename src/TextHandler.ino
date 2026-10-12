@@ -1,11 +1,91 @@
 // below is data required to be included in every line - text formatting is based on those
 const char DIS_leftadjusted[14]={0x00,0x1B,0x00,0x5B,0x00,0x66,0x00,0x53,0x00,0x5F,0x00,0x67,0x00,0x6D}, DIS_smallfont[14]={0x00,0x1B,0x00,0x5B,0x00,0x66,0x00,0x53,0x00,0x5F,0x00,0x64,0x00,0x6D}, DIS_centered[8]={0x00, 0x1B, 0x00, 0x5B, 0x00, 0x63, 0x00, 0x6D}, DIS_rightadjusted[8]={0x00, 0x1B, 0x00, 0x5B, 0x00, 0x72, 0x00, 0x6D};
 
+static void transliterate_char(uint32_t charint, char *output, size_t *j) {
+    switch (charint) {
+        // Cyrillic uppercase (0xD0)
+        case 0x0404: output[(*j)++] = 'E'; break; // Є
+        case 0x0406: output[(*j)++] = 'I'; break; // І
+        case 0x0407: output[(*j)++] = 'Y'; output[(*j)++] = 'i'; break; // Ї
+        case 0x0410: output[(*j)++] = 'A'; break; // А
+        case 0x0411: output[(*j)++] = 'B'; break; // Б
+        case 0x0412: output[(*j)++] = 'V'; break; // В
+        case 0x0413: output[(*j)++] = 'G'; break; // Г
+        case 0x0414: output[(*j)++] = 'D'; break; // Д
+        case 0x0415: output[(*j)++] = 'E'; break; // Е
+        case 0x0401: output[(*j)++] = 'Y'; output[(*j)++] = 'o'; break; // Ё
+        case 0x0416: output[(*j)++] = 'Z'; output[(*j)++] = 'h'; break; // Ж
+        case 0x0417: output[(*j)++] = 'Z'; break; // З
+        case 0x0418: output[(*j)++] = 'Y'; break; // И
+        case 0x0419: output[(*j)++] = 'Y'; break; // Й
+        case 0x041A: output[(*j)++] = 'K'; break; // К
+        case 0x041B: output[(*j)++] = 'L'; break; // Л
+        case 0x041C: output[(*j)++] = 'M'; break; // М
+        case 0x041D: output[(*j)++] = 'N'; break; // Н
+        case 0x041E: output[(*j)++] = 'O'; break; // О
+        case 0x041F: output[(*j)++] = 'P'; break; // П
+        case 0x0420: output[(*j)++] = 'R'; break; // Р
+        case 0x0421: output[(*j)++] = 'S'; break; // С
+        case 0x0422: output[(*j)++] = 'T'; break; // Т
+        case 0x0423: output[(*j)++] = 'U'; break; // У
+        case 0x0424: output[(*j)++] = 'F'; break; // Ф
+        case 0x0425: output[(*j)++] = 'H'; break; // Х
+        case 0x0426: output[(*j)++] = 'T'; output[(*j)++] = 's'; break; // Ц
+        case 0x0427: output[(*j)++] = 'C'; output[(*j)++] = 'h'; break; // Ч
+        case 0x0428: output[(*j)++] = 'S'; output[(*j)++] = 'h'; break; // Ш
+        case 0x0429: output[(*j)++] = 'S'; output[(*j)++] = 'h'; output[(*j)++] = 'c'; output[(*j)++] = 'h'; break; // Щ
+        case 0x042B: output[(*j)++] = 'Y'; break; // Ы
+        case 0x042D: output[(*j)++] = 'E'; break; // Э
+        case 0x042E: output[(*j)++] = 'Y'; output[(*j)++] = 'u'; break; // Ю
+        case 0x042F: output[(*j)++] = 'Y'; output[(*j)++] = 'a'; break; // Я
+        // Cyrillic lowercase (0xD0, 0xD1)
+        case 0x0430: output[(*j)++] = 'a'; break; // а
+        case 0x0431: output[(*j)++] = 'b'; break; // б
+        case 0x0432: output[(*j)++] = 'v'; break; // в
+        case 0x0433: output[(*j)++] = 'g'; break; // г
+        case 0x0434: output[(*j)++] = 'd'; break; // д
+        case 0x0435: output[(*j)++] = 'e'; break; // е
+        case 0x0436: output[(*j)++] = 'z'; output[(*j)++] = 'h'; break; // ж
+        case 0x0437: output[(*j)++] = 'z'; break; // з
+        case 0x0438: output[(*j)++] = 'y'; break; // и
+        case 0x0439: output[(*j)++] = 'y'; break; // й
+        case 0x043A: output[(*j)++] = 'k'; break; // к
+        case 0x043B: output[(*j)++] = 'l'; break; // л
+        case 0x043C: output[(*j)++] = 'm'; break; // м
+        case 0x043D: output[(*j)++] = 'n'; break; // н
+        case 0x043E: output[(*j)++] = 'o'; break; // о
+        case 0x043F: output[(*j)++] = 'p'; break; // п
+        case 0x0440: output[(*j)++] = 'r'; break; // р
+        case 0x0441: output[(*j)++] = 's'; break; // с
+        case 0x0442: output[(*j)++] = 't'; break; // т
+        case 0x0443: output[(*j)++] = 'u'; break; // у
+        case 0x0444: output[(*j)++] = 'f'; break; // ф
+        case 0x0445: output[(*j)++] = 'h'; break; // х
+        case 0x0446: output[(*j)++] = 't'; output[(*j)++] = 's'; break; // ц
+        case 0x0447: output[(*j)++] = 'c'; output[(*j)++] = 'h'; break; // ч
+        case 0x0448: output[(*j)++] = 's'; output[(*j)++] = 'h'; break; // ш
+        case 0x0449: output[(*j)++] = 's'; output[(*j)++] = 'h'; output[(*j)++] = 'c'; output[(*j)++] = 'h'; break; // щ
+        case 0x044B: output[(*j)++] = 'y'; break; // ы
+        case 0x044D: output[(*j)++] = 'e'; break; // э
+        case 0x044E: output[(*j)++] = 'y'; output[(*j)++] = 'u'; break; // ю
+        case 0x044F: output[(*j)++] = 'y'; output[(*j)++] = 'a'; break; // я
+        case 0x0454: output[(*j)++] = 'y'; output[(*j)++] = 'e'; break; // є
+        case 0x0456: output[(*j)++] = 'i'; break; // і
+        case 0x0457: output[(*j)++] = 'y'; output[(*j)++] = 'i'; break; // ї
+        // Ukrainian-specific (0xD2)
+        case 0x0490: output[(*j)++] = 'G'; break; // Ґ
+        case 0x0491: output[(*j)++] = 'g'; break; // ґ
+    }
+}
+
 // converts an UTF-8 buffer to UTF-16, filters out unsupported chars, returns the amount of chars processed
 unsigned int utf8_to_utf16(const char* utf8_buffer, char* utf16_buffer){
   unsigned int utf16_bytecount=0;
+  char temp_buffer[8]; // Temporary buffer for transliterated ASCII characters
+
   while (*utf8_buffer!='\0'){
     uint32_t charint=0;
+
     if ((*utf8_buffer&0x80)==0x00){
       charint=*utf8_buffer&0x7F;
       utf8_buffer++;
@@ -44,7 +124,18 @@ unsigned int utf8_to_utf16(const char* utf8_buffer, char* utf16_buffer){
         utf16_buffer[utf16_bytecount++]=static_cast<char>((charint>>8)&0xFF);
         utf16_buffer[utf16_bytecount++]=static_cast<char>(charint&0xFF);
       }
-    }
+    } else if (charint >= 0x0400 && charint <= 0x04FF) {
+        // Unsupported Cyrillic character, transliterate to ASCII
+        size_t j = 0;
+        transliterate_char(charint, temp_buffer, &j);
+        temp_buffer[j] = '\0';
+
+        // Convert transliterated ASCII to UTF-16
+        for (size_t k = 0; k < j; k++) {
+            utf16_buffer[utf16_bytecount++] = 0x00;
+            utf16_buffer[utf16_bytecount++] = temp_buffer[k];
+        }
+    } // Else, skip unsupported characters
   }
   return utf16_bytecount/2;  // amount of chars processed
 }
